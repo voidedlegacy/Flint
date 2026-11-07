@@ -49,3 +49,22 @@ struct Token {
 };
 
 static_assert(sizeof(Token) == 8, "Token must stay 8 bytes");
+
+// Go-style semicolon insertion: a newline ends the statement
+// only if the previous token could end one.
+constexpr bool ends_statement(TokenKind k) {
+  switch (k) {
+  case TokenKind::Ident:
+  case TokenKind::IntLit:
+  case TokenKind::StringLit:
+  case TokenKind::RParen:
+  case TokenKind::RBrace:
+  case TokenKind::KwReturn:
+    return true;
+  default:
+    return false;
+  }
+}
+
+static_assert(ends_statement(TokenKind::RParen));
+static_assert(!ends_statement(TokenKind::Assign));
