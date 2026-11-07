@@ -2,6 +2,7 @@
 #include <cstddef>
 #include <memory>
 #include <new>
+#include <span>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -24,6 +25,18 @@ public:
                   "over-aligned types are not supported");
     void *mem = allocate(sizeof(T), alignof(T));
     return ::new (mem) T{std::forward<Args>(args)...};
+  }
+
+  // Copies a temporary list into the arena and returns a view of it.
+  // Used for child lists, e.g. the statements in a block.
+  template <typename T> std::span<T> copy_array(const std::vector<T> &items) {
+    static_assert(std::is_trivially_copyable_v<T>,
+                  "Arena arrays must be trivially copyable");
+    if (items.empty())
+      return {};
+    T *mem = static_cast<T *>(allocate(sizeof(T) * items.size(), alignof(T)));
+    std::uninitialized_copy(items.begin(), items.end(), mem);
+    return {mem, items.size()};
   }
 
   std::size_t bytes_used() const { return used_; }

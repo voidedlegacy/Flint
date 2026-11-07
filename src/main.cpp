@@ -4,21 +4,27 @@
 #include <cstdio>
 
 int main() {
-  const char *source = R"(var count = 42
-let limit = count * 2 +
-    1
-count == limit
-let 5 = oops
-return
-return count
+  const char *source = R"(fn main() {
+	var count = 42
+}
+
+fn helper() {
+	let x = 1
+	{ var y = x + 1 }
+	return x
+}
+
+var stray = 5
+
+fn empty() {}
 )";
 
   Arena arena;
   Lexer lexer(source);
   Parser parser(lexer, arena);
 
-  while (!parser.at_eof()) {
-    dump(parser.parse_stmt());
+  for (FnDecl *fn : parser.parse_file()) {
+    dump(fn);
     std::printf("\n");
   }
   std::printf("had error: %s\n", parser.had_error() ? "yes" : "no");

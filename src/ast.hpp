@@ -3,6 +3,7 @@
 #include <cassert>
 #include <cstdint>
 #include <cstdio>
+#include <span>
 #include <string_view>
 
 // Every expression node starts with this header. The kind tag tells us
@@ -106,7 +107,7 @@ inline void dump(Expr *e) {
 
 // ---------------------------------------------------------------- statements
 
-enum class StmtKind : std::uint8_t { Var, Return, Expr };
+enum class StmtKind : std::uint8_t { Var, Return, Expr, Block };
 
 struct Stmt {
   StmtKind kind;
@@ -140,6 +141,14 @@ struct ExprStmt : Stmt {
   ExprStmt(std::uint32_t off, Expr *e) : Stmt{Kind, off}, expr(e) {}
 };
 
+struct BlockStmt : Stmt {
+  static constexpr StmtKind Kind = StmtKind::Block;
+  std::span<Stmt *> stmts; // stored in the arena
+
+  BlockStmt(std::uint32_t off, std::span<Stmt *> s)
+      : Stmt{Kind, off}, stmts(s) {}
+};
+
 template <typename T> T *cast(Stmt *s) {
   assert(s->kind == T::Kind);
   return static_cast<T *>(s);
@@ -168,5 +177,28 @@ inline void dump(Stmt *s) {
   case StmtKind::Expr:
     dump(cast<ExprStmt>(s)->expr);
     break;
+  case StmtKind::Block:
+    std::printf("(block");
+    for (Stmt *child : cast<BlockStmt>(s)->stmts) {
+      std::printf(" ");
+      dump(child);
+    }
+    std::printf(")");
+    break;
   }
+}
+
+// --------------------------------------------------------------- declarations
+
+// fn name() { ... }      Parameters and return types come later.
+struct FnDecl {
+  std::uint32_t offset;
+  std::string_view name;
+  BlockStmt *body;
+};
+
+inline void dump(FnDecl *f) {
+  std::printf("(fn %.*s ", static_cast<int>(f->name.size()), f->name.data());
+  dump(f->body);
+  std::printf(")");
 }

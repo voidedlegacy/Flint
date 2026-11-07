@@ -5,6 +5,8 @@
 #include <charconv>
 #include <cstdint>
 #include <cstdio>
+#include <span>
+#include <vector>
 
 class Parser {
 public:
@@ -28,6 +30,21 @@ public:
     return lhs;
   }
 
+  // Parses a whole file: a list of top-level fn declarations.
+  std::span<FnDecl *> parse_file() {
+    std::vector<FnDecl *> fns;
+    while (!at_eof()) {
+      if (tok_.kind == TokenKind::KwFn) {
+        fns.push_back(parse_fn());
+      } else {
+        error(tok_, "expected 'fn'");
+        synchronize();
+        panicking_ = false;
+      }
+    }
+    return arena_.copy_array(fns);
+  }
+
   // Parses one statement, including its terminating semicolon.
   Stmt *parse_stmt() {
     const Token t = tok_;
@@ -41,6 +58,8 @@ public:
       Expr *init = parse_expr();
       s = arena_.make<VarStmt>(t.offset, lex_.text(name),
                                t.kind == TokenKind::KwVar, init);
+    } else if (t.kind == TokenKind::LBrace) {
+      s = parse_block();
     } else if (t.kind == TokenKind::KwReturn) {
       bump();
       Expr *value = tok_.kind == TokenKind::Semicolon ? nullptr : parse_expr();
@@ -52,6 +71,8 @@ public:
 
     if (tok_.kind == TokenKind::Semicolon) {
       bump();
+    } else if (tok_.kind == TokenKind::RBrace) {
+      // Last statement in a block may skip the semicolon: { return x }
     } else {
       error(tok_, "expected end of statement");
       synchronize();
@@ -72,6 +93,33 @@ private:
   bool panicking_ = false; // true after an error until the statement ends
 
   void bump() { tok_ = lex_.next(); }
+
+  // fn name() { ... }
+  FnDecl *parse_fn() {
+    const Token fn_tok = tok_;
+    bump(); // 'fn'
+    const Token name = tok_;
+    expect(TokenKind::Ident, "expected a function name");
+    expect(TokenKind::LParen, "expected '('");
+    expect(TokenKind::RParen, "expected ')'");
+    BlockStmt *body = parse_block();
+    if (tok_.kind == TokenKind::Semicolon)
+      bump(); // inserted after '}'
+    panicking_ = false;
+    return arena_.make<FnDecl>(fn_tok.offset, lex_.text(name), body);
+  }
+
+  // { stmt; stmt; ... }
+  BlockStmt *parse_block() {
+    const Token open = tok_;
+    expect(TokenKind::LBrace, "expected '{'");
+    std::vector<Stmt *> stmts;
+    while (tok_.kind != TokenKind::RBrace && !at_eof()) {
+      stmts.push_back(parse_stmt());
+    }
+    expect(TokenKind::RBrace, "expected '}'");
+    return arena_.make<BlockStmt>(open.offset, arena_.copy_array(stmts));
+  }
 
   // 0 means "not a binary operator", which ends the loop above.
   static int precedence(TokenKind k) {
