@@ -28,6 +28,40 @@ public:
     return lhs;
   }
 
+  // Parses one statement, including its terminating semicolon.
+  Stmt *parse_stmt() {
+    const Token t = tok_;
+    Stmt *s = nullptr;
+
+    if (t.kind == TokenKind::KwVar || t.kind == TokenKind::KwLet) {
+      bump();
+      const Token name = tok_;
+      expect(TokenKind::Ident, "expected a variable name");
+      expect(TokenKind::Assign, "expected '='");
+      Expr *init = parse_expr();
+      s = arena_.make<VarStmt>(t.offset, lex_.text(name),
+                               t.kind == TokenKind::KwVar, init);
+    } else if (t.kind == TokenKind::KwReturn) {
+      bump();
+      Expr *value = tok_.kind == TokenKind::Semicolon ? nullptr : parse_expr();
+      s = arena_.make<ReturnStmt>(t.offset, value);
+    } else {
+      Expr *e = parse_expr();
+      s = arena_.make<ExprStmt>(t.offset, e);
+    }
+
+    if (tok_.kind == TokenKind::Semicolon) {
+      bump();
+    } else {
+      error(tok_, "expected end of statement");
+      synchronize();
+    }
+    panicking_ = false; // next statement gets a fresh start
+    return s;
+  }
+
+  bool at_eof() const { return tok_.kind == TokenKind::Eof; }
+
   bool had_error() const { return had_error_; }
 
 private:
@@ -35,6 +69,7 @@ private:
   Arena &arena_;
   Token tok_{}; // current token, not yet consumed
   bool had_error_ = false;
+  bool panicking_ = false; // true after an error until the statement ends
 
   void bump() { tok_ = lex_.next(); }
 
@@ -91,7 +126,7 @@ private:
     case TokenKind::LParen: {
       bump();
       Expr *inner = parse_expr();
-      expect(TokenKind::RParen, "')'");
+      expect(TokenKind::RParen, "expected ')'");
       return inner;
     }
     default:
@@ -109,8 +144,20 @@ private:
     }
   }
 
+  // After an error, skip ahead to the next statement boundary so one
+  // mistake does not cause a flood of follow-up errors.
+  void synchronize() {
+    while (tok_.kind != TokenKind::Semicolon && tok_.kind != TokenKind::Eof)
+      bump();
+    if (tok_.kind == TokenKind::Semicolon)
+      bump();
+  }
+
   void error(Token at, const char *msg) {
     had_error_ = true;
+    if (panicking_)
+      return; // report only the first error per statement
+    panicking_ = true;
     std::fprintf(stderr, "error at offset %u: %s\n", at.offset, msg);
   }
 };

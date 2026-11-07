@@ -103,3 +103,70 @@ inline void dump(Expr *e) {
   }
   }
 }
+
+// ---------------------------------------------------------------- statements
+
+enum class StmtKind : std::uint8_t { Var, Return, Expr };
+
+struct Stmt {
+  StmtKind kind;
+  std::uint32_t offset;
+};
+
+// var x = e   (mutable)     let x = e   (immutable)
+struct VarStmt : Stmt {
+  static constexpr StmtKind Kind = StmtKind::Var;
+  std::string_view name;
+  bool is_mut;
+  Expr *init;
+
+  VarStmt(std::uint32_t off, std::string_view n, bool m, Expr *e)
+      : Stmt{Kind, off}, name(n), is_mut(m), init(e) {}
+};
+
+// return      or      return e
+struct ReturnStmt : Stmt {
+  static constexpr StmtKind Kind = StmtKind::Return;
+  Expr *value; // nullptr for a bare return
+
+  ReturnStmt(std::uint32_t off, Expr *v) : Stmt{Kind, off}, value(v) {}
+};
+
+// An expression used as a statement, e.g. a call: f(x)
+struct ExprStmt : Stmt {
+  static constexpr StmtKind Kind = StmtKind::Expr;
+  Expr *expr;
+
+  ExprStmt(std::uint32_t off, Expr *e) : Stmt{Kind, off}, expr(e) {}
+};
+
+template <typename T> T *cast(Stmt *s) {
+  assert(s->kind == T::Kind);
+  return static_cast<T *>(s);
+}
+
+inline void dump(Stmt *s) {
+  switch (s->kind) {
+  case StmtKind::Var: {
+    auto *v = cast<VarStmt>(s);
+    std::printf("(%s %.*s ", v->is_mut ? "var" : "let",
+                static_cast<int>(v->name.size()), v->name.data());
+    dump(v->init);
+    std::printf(")");
+    break;
+  }
+  case StmtKind::Return: {
+    auto *r = cast<ReturnStmt>(s);
+    std::printf("(return");
+    if (r->value) {
+      std::printf(" ");
+      dump(r->value);
+    }
+    std::printf(")");
+    break;
+  }
+  case StmtKind::Expr:
+    dump(cast<ExprStmt>(s)->expr);
+    break;
+  }
+}
