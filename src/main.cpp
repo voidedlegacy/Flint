@@ -1,35 +1,22 @@
 #include "arena.hpp"
-#include <cstdint>
+#include "ast.hpp"
 #include <cstdio>
 
-struct Point {
-  int x;
-  int y;
-};
-struct Wide {
-  char tag;
-  double value;
-};
-
 int main() {
-  Arena arena(1024); // small blocks so we force several of them
+  Arena arena;
 
-  Point *first = nullptr;
-  Point *last = nullptr;
-  for (int i = 0; i < 1000; ++i) {
-    Point *p = arena.make<Point>(i, i * 2);
-    if (i == 0)
-      first = p;
-    if (i == 999)
-      last = p;
-  }
+  // Build the tree for:  -(1 + x) * &mut y
+  // by hand. The parser will do this for us in a later step.
+  Expr *one = arena.make<IntExpr>(2u, 1u);
+  Expr *x = arena.make<IdentExpr>(6u, "x");
+  Expr *sum = arena.make<BinaryExpr>(2u, TokenKind::Plus, one, x);
+  Expr *neg = arena.make<UnaryExpr>(0u, TokenKind::Minus, false, sum);
+  Expr *y = arena.make<IdentExpr>(16u, "y");
+  Expr *ref = arena.make<UnaryExpr>(11u, TokenKind::Amp, true, y);
+  Expr *root = arena.make<BinaryExpr>(0u, TokenKind::Star, neg, ref);
 
-  Wide *w = arena.make<Wide>('w', 3.5);
-  const bool aligned = reinterpret_cast<std::uintptr_t>(w) % alignof(Wide) == 0;
-
-  std::printf("first = (%d, %d)\n", first->x, first->y);
-  std::printf("last  = (%d, %d)\n", last->x, last->y);
-  std::printf("wide  = %c %.1f, aligned = %s\n", w->tag, w->value,
-              aligned ? "yes" : "no");
-  std::printf("bytes used = %zu\n", arena.bytes_used());
+  dump(root);
+  std::printf("\nsizeof: Int=%zu Ident=%zu Unary=%zu Binary=%zu\n",
+              sizeof(IntExpr), sizeof(IdentExpr), sizeof(UnaryExpr),
+              sizeof(BinaryExpr));
 }
