@@ -1,0 +1,33 @@
+#+TITLE: Flint
+
+An experimental compiled systems langauge, implemented in modern C++.
+
+* Goals
+
+- Clear, minimal syntax inspired by Go.
+- Compile-time memory safety through ownership and borrowing.
+- Low-level control through explicit unsafe operations.
+- Predictable performance with minimal runtime overhead.
+
+These are design goals, not implemented features.
+
+* Proposed syntax
+
+#+begin_src flint
+fn main() {
+	var count = 42
+}
+#+end_src
+
+* Status
+
+Early development. The first milestone 	is token design and a lexer.
+
+* Implementation
+
+- C++20 or newer.
+- Backend to be decided.
+
+* License
+
+[[file:LICENSE][MIT]]
