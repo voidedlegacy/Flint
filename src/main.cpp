@@ -2,7 +2,9 @@
 #include <cstdio>
 
 int main() {
-  Lexer lex("fn main() {\n\tvar count=\n\t\t42\n}");
+  Lexer lex(R"(var s = "hi \"x\"" // note
+var t = 8 / 2
+"oops)");
 
   for (Token t = lex.next(); t.kind != TokenKind::Eof; t = lex.next()) {
     const auto s = lex.text(t);

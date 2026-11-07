@@ -72,6 +72,8 @@ private:
       return make(TokenKind::Amp);
     case '=':
       return make(match('=') ? TokenKind::EqEq : TokenKind::Assign);
+    case '"':
+      return lex_string();
     default:
       if (is_ident_start(c))
         return lex_word();
@@ -84,9 +86,12 @@ private:
   bool at_end() const { return pos_ >= src_.size(); }
   char peek() const { return at_end() ? '\0' : src_[pos_]; }
   char advance() { return src_[pos_++]; }
+  char peek_next() const {
+    return pos_ + 1 >= src_.size() ? '\0' : src_[pos_ + 1];
+  }
 
-  // Skips spaces, tabs and newlines, but stops at a newline that
-  // ends a statement so scan() can turn it into a Semicolon.
+  // Skips spaces, tabs, newlines, and // comments, but stops at a newline
+  // that ends a statement so scan() can turn it into a Semicolon.
   void skip_whitespace() {
     while (!at_end()) {
       const char c = peek();
@@ -94,6 +99,11 @@ private:
         return;
       if (c == ' ' || c == '\t' || c == '\r' || c == '\n') {
         ++pos_;
+      } else if (c == '/' && peek_next() == '/') {
+        // Comment runs to end of line. Leave the '\n' alone so
+        // semicolon insertion still sees it.
+        while (!at_end() && peek() != '\n')
+          ++pos_;
       } else {
         return;
       }
@@ -122,6 +132,19 @@ private:
     while (is_digit(peek()))
       ++pos_;
     return make(TokenKind::IntLit);
+  }
+
+  // Opening quote is already consumed. Read up to the closing quote.
+  // The token's text includes both quotes. A backslask skips the next
+  // character, so \" does not end the string.
+  Token lex_string() {
+    while (!at_end() && peek() != '"' && peek() != '\n') {
+      if (advance() == '\\' && !at_end())
+        ++pos_;
+    }
+    if (!match('"'))
+      return make(TokenKind::Error); // unterminated
+    return make(TokenKind::StringLit);
   }
 
   // If the next character is `expected`, consume it and return true.
