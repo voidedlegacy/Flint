@@ -2,7 +2,7 @@
 #include <cstdio>
 
 int main() {
-  Lexer lex("( ) {\n\t} + & ?");
+  Lexer lex("fn main() {\n\tvar count_2\n}");
 
   for (Token t = lex.next(); t.kind != TokenKind::Eof; t = lex.next()) {
     const auto s = lex.text(t);

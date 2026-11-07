@@ -44,6 +44,8 @@ public:
     case '&':
       return make(TokenKind::Amp);
     default:
+      if (is_ident_start(c))
+        return lex_word();
       return make(TokenKind::Error);
     }
   }
@@ -71,6 +73,23 @@ private:
         return;
       }
     }
+  }
+
+  static bool is_ident_start(char c) {
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
+  }
+
+  static bool is_digit(char c) { return c >= '0' && c <= '9'; }
+
+  static bool is_ident_character(char c) {
+    return is_ident_start(c) || is_digit(c);
+  }
+
+  Token lex_word() {
+    while (is_ident_character(peek()))
+      ++pos_;
+    const std::string_view word = src_.substr(start_, pos_ - start_);
+    return make(keyword_or_ident(word));
   }
 
   Token make(TokenKind kind) const {
