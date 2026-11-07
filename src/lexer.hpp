@@ -43,9 +43,13 @@ public:
       return make(TokenKind::Slash);
     case '&':
       return make(TokenKind::Amp);
+    case '=':
+      return make(match('=') ? TokenKind::EqEq : TokenKind::Assign);
     default:
       if (is_ident_start(c))
         return lex_word();
+      if (is_digit(c))
+        return lex_number();
       return make(TokenKind::Error);
     }
   }
@@ -90,6 +94,21 @@ private:
       ++pos_;
     const std::string_view word = src_.substr(start_, pos_ - start_);
     return make(keyword_or_ident(word));
+  }
+
+  // First digit is already consumed. Read the rest of the digits.
+  Token lex_number() {
+    while (is_digit(peek()))
+      ++pos_;
+    return make(TokenKind::IntLit);
+  }
+
+  // If the next characters is `expected`, consume it and return true.
+  bool match(char expected) {
+    if (peek() != expected)
+      return false;
+    ++pos_;
+    return true;
   }
 
   Token make(TokenKind kind) const {

@@ -2,7 +2,7 @@
 #include <cstdio>
 
 int main() {
-  Lexer lex("fn main() {\n\tvar count_2\n}");
+  Lexer lex("var count = 42\ncount == 7");
 
   for (Token t = lex.next(); t.kind != TokenKind::Eof; t = lex.next()) {
     const auto s = lex.text(t);
