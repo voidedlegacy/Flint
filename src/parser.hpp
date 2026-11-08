@@ -1,6 +1,7 @@
 #pragma once
 #include "arena.hpp"
 #include "ast.hpp"
+#include "diag.hpp"
 #include "lexer.hpp"
 #include <charconv>
 #include <cstdint>
@@ -10,7 +11,8 @@
 
 class Parser {
 public:
-  Parser(Lexer &lexer, Arena &arena) : lex_(lexer), arena_(arena) {
+  Parser(Lexer &lexer, Arena &arena, Diagnostics &diag)
+      : lex_(lexer), arena_(arena), diag_(diag) {
     tok_ = lex_.next(); // prime the first token
   }
 
@@ -88,6 +90,7 @@ public:
 private:
   Lexer &lex_;
   Arena &arena_;
+  Diagnostics &diag_;
   Token tok_{}; // current token, not yet consumed
   bool had_error_ = false;
   bool panicking_ = false; // true after an error until the statement ends
@@ -206,6 +209,6 @@ private:
     if (panicking_)
       return; // report only the first error per statement
     panicking_ = true;
-    std::fprintf(stderr, "error at offset %u: %s\n", at.offset, msg);
+    diag_.error(at.offset, msg);
   }
 };

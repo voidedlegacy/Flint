@@ -1,0 +1,6 @@
+fn main() {
+	var = 1
+	let ok = (2 + 3
+}
+
+let stray = 5

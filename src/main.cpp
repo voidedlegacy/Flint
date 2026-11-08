@@ -30,9 +30,10 @@ int main(int argc, char **argv) {
   }
 
   // `source` must outlive the arena: AST names point into it.
+  Diagnostics diag(argv[1], *source);
   Arena arena;
   Lexer lexer(*source);
-  Parser parser(lexer, arena);
+  Parser parser(lexer, arena, diag);
 
   for (FnDecl *fn : parser.parse_file()) {
     dump(fn);
