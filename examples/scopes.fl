@@ -1,0 +1,11 @@
+fn main() {
+	let a = 1
+	var b = a + 2
+	{
+		let a = b * 2 // shadowing an outer name is fine
+		return a + c  // c was never declared
+	}
+	let b = 3       // b already exists in this scope
+	var d = d       // d is not declared yet on the right side
+	return a
+}

@@ -22,9 +22,12 @@ struct IntExpr : Expr {
   IntExpr(std::uint32_t off, std::uint64_t v) : Expr{Kind, off}, value(v) {}
 };
 
+struct VarStmt; // defined below; IdentExpr points at its declaration
+
 struct IdentExpr : Expr {
   static constexpr ExprKind Kind = ExprKind::Ident;
-  std::string_view name; // points into the source buffer, no copy
+  std::string_view name;   // points into the source buffer, no copy
+  VarStmt *decl = nullptr; // filled in by the Resolver.
 
   IdentExpr(std::uint32_t off, std::string_view n) : Expr{Kind, off}, name(n) {}
 };

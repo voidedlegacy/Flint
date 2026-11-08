@@ -1,6 +1,8 @@
 #include "arena.hpp"
+#include "diag.hpp"
 #include "lexer.hpp"
 #include "parser.hpp"
+#include "sema.hpp"
 #include <cstdio>
 #include <fstream>
 #include <optional>
@@ -35,9 +37,18 @@ int main(int argc, char **argv) {
   Lexer lexer(*source);
   Parser parser(lexer, arena, diag);
 
-  for (FnDecl *fn : parser.parse_file()) {
+  // Stage 2: parse.
+  const auto fns = parser.parse_file();
+  for (FnDecl *fn : fns) {
     dump(fn);
     std::printf("\n");
   }
-  return parser.had_error() ? 1 : 0;
+  if (diag.error_count() > 0)
+    return 1; // don't analyse a broken tree
+
+  // Stage 3: resolve names.
+  Resolver resolver(diag);
+  resolver.run(fns);
+
+  return diag.error_count() > 0 ? 1 : 0;
 }
