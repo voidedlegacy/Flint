@@ -31,13 +31,16 @@ static bool write_file(const std::string &path, const std::string &text) {
 }
 
 int main(int argc, char **argv) {
-  // flint [--ast] <file.fl>
+  // flint [--ast] [-O0|-O1|-O2|-O3] <file.fl>
   bool show_ast = false;
+  std::string opt = "-O0"; // passed straight through to clang
   std::string path;
   for (int i = 1; i < argc; ++i) {
     const std::string_view arg = argv[i];
     if (arg == "--ast") {
       show_ast = true;
+    } else if (arg == "-O0" || arg == "-O1" || arg == "-O2" || arg == "-O3") {
+      opt = arg;
     } else if (path.empty()) {
       path = arg;
     } else {
@@ -46,7 +49,7 @@ int main(int argc, char **argv) {
     }
   }
   if (path.empty()) {
-    std::fprintf(stderr, "usage: flint [--ast] <file.fl>\n");
+    std::fprintf(stderr, "usage: flint [--ast] [-O0|-O1|-O2|-O3] <file.fl>\n");
     return 2;
   }
 
@@ -108,11 +111,11 @@ int main(int argc, char **argv) {
   }
 
   const std::string cmd =
-      "clang -Wno-override-module -o '" + stem + "' '" + ll + "'";
+      "clang " + opt + " -Wno-override-module -o '" + stem + "' '" + ll + "'";
   if (std::system(cmd.c_str()) != 0) {
     std::fprintf(stderr, "flint: clang failed on '%s'\n", ll.c_str());
     return 1;
   }
-  std::printf("built %s\n", stem.c_str());
+  std::printf("built %s (%s)\n", stem.c_str(), opt.c_str());
   return 0;
 }
