@@ -2,30 +2,41 @@
 #include "lexer.hpp"
 #include "parser.hpp"
 #include <cstdio>
+#include <fstream>
+#include <optional>
+#include <sstream>
+#include <string>
 
-int main() {
-  const char *source = R"(fn main() {
-	var count = 42
+// Reads a whole file into a string. Returns nullopt if it can't be opened.
+static std::optional<std::string> read_file(const char *path) {
+  std::ifstream in(path, std::ios::binary);
+  if (!in)
+    return std::nullopt;
+  std::ostringstream buf;
+  buf << in.rdbuf();
+  return std::move(buf).str();
 }
 
-fn helper() {
-	let x = 1
-	{ var y = x + 1 }
-	return x
-}
+int main(int argc, char **argv) {
+  if (argc != 2) {
+    std::fprintf(stderr, "usage: flint <file.fl>\n");
+    return 2;
+  }
 
-var stray = 5
+  const auto source = read_file(argv[1]);
+  if (!source) {
+    std::fprintf(stderr, "flint: cannot open '%s'\n", argv[1]);
+    return 2;
+  }
 
-fn empty() {}
-)";
-
+  // `source` must outlive the arena: AST names point into it.
   Arena arena;
-  Lexer lexer(source);
+  Lexer lexer(*source);
   Parser parser(lexer, arena);
 
   for (FnDecl *fn : parser.parse_file()) {
     dump(fn);
     std::printf("\n");
   }
-  std::printf("had error: %s\n", parser.had_error() ? "yes" : "no");
+  return parser.had_error() ? 1 : 0;
 }
