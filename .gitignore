@@ -4,3 +4,7 @@ cmake-build-*/
 
 # macOS metadata
 .DS_Store
+
+# Compiler output from examples (keep only the .fl sources)
+examples/*
+!examples/*.fl

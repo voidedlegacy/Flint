@@ -1,0 +1,10 @@
+// The first compiled Flint program!
+// Run, then check the exit code with: echo $?
+fn main() {
+	var x = 6
+	let y = 7
+	x = x * y		// 42
+	let r = &x      // a pointer to x's stack slot 
+	let same = r == &x
+	return x
+}
