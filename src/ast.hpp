@@ -1,5 +1,6 @@
 #pragma once
 #include "token.hpp"
+#include "types.hpp"
 #include <cassert>
 #include <cstdint>
 #include <cstdio>
@@ -13,6 +14,7 @@ enum class ExprKind : std::uint8_t { Int, Ident, Unary, Binary };
 struct Expr {
   ExprKind kind;
   std::uint32_t offset; // where it starts in the source, for errors
+  Type *type = nullptr; // filled in by the checker
 };
 
 struct IntExpr : Expr {
@@ -123,6 +125,7 @@ struct VarStmt : Stmt {
   std::string_view name;
   bool is_mut;
   Expr *init;
+  Type *type = nullptr; // inferred from init by the checker
 
   VarStmt(std::uint32_t off, std::string_view n, bool m, Expr *e)
       : Stmt{Kind, off}, name(n), is_mut(m), init(e) {}
@@ -171,8 +174,11 @@ inline void dump(Stmt *s) {
   switch (s->kind) {
   case StmtKind::Var: {
     auto *v = cast<VarStmt>(s);
-    std::printf("(%s %.*s ", v->is_mut ? "var" : "let",
+    std::printf("(%s %.*s", v->is_mut ? "var" : "let",
                 static_cast<int>(v->name.size()), v->name.data());
+    if (v->type)
+      std::printf(": %s", type_name(v->type).c_str());
+    std::printf(" ");
     dump(v->init);
     std::printf(")");
     break;

@@ -1,0 +1,10 @@
+fn main() {
+	var a = 1 + 2 * 3
+	let same = a == 7
+	let r = &a
+	let m = &mut a
+	let bad = 1 + (2 == 3) // error: + needs i64 on both sides
+	a = same               // error: a is i64, same is bool
+	let neg = -same        // error: - needs i64
+	let quiet = bad + 1    // no error: bad is already broken
+}

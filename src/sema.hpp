@@ -1,22 +1,25 @@
 #pragma once
 #include "ast.hpp"
 #include "diag.hpp"
+#include "types.hpp"
 #include <cstddef>
 #include <span>
 #include <string>
 #include <string_view>
 #include <vector>
 
-// Name resolution: links every identifier to the `var`/`let` that
-// declared it, and reports names that are undeclared or declared twice
-// in the same scope.
-class Resolver {
+// Semantic checker. One walk over each function that:
+//   1. links every identifier to the `var`/`let` that declared it,
+//   2. gives every expression and variable a type,
+//   3. enforces the rules: no undeclared names, no same-scope redeclaration,
+//      no assigning to `let`, and operands must have the right types.
+class Checker {
 public:
-  explicit Resolver(Diagnostics &diag) : diag_(diag) {}
+  Checker(Diagnostics &diag, TypeTable &types) : diag_(diag), types_(types) {}
 
   void run(std::span<FnDecl *> fns) {
     for (FnDecl *fn : fns)
-      resolve_stmt(fn->body);
+      check_stmt(fn->body);
   }
 
 private:
@@ -26,17 +29,20 @@ private:
   };
 
   Diagnostics &diag_;
+  TypeTable &types_;
   std::vector<Symbol> symbols_; // every visible name, innermost last
   std::vector<std::size_t>
       scope_starts_; // index in symbols_ where each scope begins
 
-  // symbols:       | a | b | a | x |
-  // scope_starts:    ^0      ^2           -> inner scope hols "a", "x"
+  //   symbols_:      [ a | b | a | x ]
+  //   scope_starts_:   ^0      ^2         → inner scope holds "a", "x"
+
+  // ------------------------------------------------------------ scopes
 
   void push_scope() { scope_starts_.push_back(symbols_.size()); }
 
   void pop_scope() {
-    symbols_.resize(scope_starts_.back());
+    symbols_.resize(scope_starts_.back()); // forget the inner names
     scope_starts_.pop_back();
   }
 
@@ -60,34 +66,37 @@ private:
     return nullptr;
   }
 
-  void resolve_stmt(Stmt *s) {
+  // ------------------------------------------------------------ statements
+
+  void check_stmt(Stmt *s) {
     switch (s->kind) {
     case StmtKind::Var: {
       auto *v = cast<VarStmt>(s);
-      resolve_expr(v->init); // before declares: `var x = x` is an error
+      v->type = check_expr(v->init); // before declare: `var x = x` is an error
       declare(v);
       break;
     }
     case StmtKind::Return: {
       auto *r = cast<ReturnStmt>(s);
       if (r->value)
-        resolve_expr(r->value);
+        check_expr(r->value);
       break;
     }
     case StmtKind::Expr:
-      resolve_expr(cast<ExprStmt>(s)->expr);
+      check_expr(cast<ExprStmt>(s)->expr);
       break;
     case StmtKind::Assign: {
       auto *a = cast<AssignStmt>(s);
-      resolve_expr(a->value);
-      resolve_expr(a->target);
+      Type *value = check_expr(a->value);
+      Type *target = check_expr(a->target);
       check_assign_target(a->target);
+      expect_type(a->value, value, target);
       break;
     }
     case StmtKind::Block:
       push_scope();
       for (Stmt *child : cast<BlockStmt>(s)->stmts)
-        resolve_stmt(child);
+        check_stmt(child);
       pop_scope();
       break;
     }
@@ -108,28 +117,69 @@ private:
     }
   }
 
-  void resolve_expr(Expr *e) {
+  // ------------------------------------------------------------ expressions
+
+  // Computes the type of `e`, stores it in e->type, and returns it.
+  Type *check_expr(Expr *e) {
+    e->type = compute_type(e);
+    return e->type;
+  }
+
+  Type *compute_type(Expr *e) {
     switch (e->kind) {
     case ExprKind::Int:
-      break;
+      return types_.i64();
+
     case ExprKind::Ident: {
       auto *id = cast<IdentExpr>(e);
       id->decl = lookup(id->name);
       if (!id->decl) {
         diag_.error(id->offset,
                     "undeclared name '" + std::string(id->name) + "'");
+        return types_.error();
       }
-      break;
+      return id->decl->type;
     }
-    case ExprKind::Unary:
-      resolve_expr(cast<UnaryExpr>(e)->operand);
-      break;
+
+    case ExprKind::Unary: {
+      auto *u = cast<UnaryExpr>(e);
+      Type *operand = check_expr(u->operand);
+      if (u->op == TokenKind::Amp)
+        return types_.ref(operand, u->is_mut);
+      // Unary minus
+      if (!expect_type(u->operand, operand, types_.i64()))
+        return types_.error();
+      return types_.i64();
+    }
+
     case ExprKind::Binary: {
       auto *b = cast<BinaryExpr>(e);
-      resolve_expr(b->lhs);
-      resolve_expr(b->rhs);
-      break;
+      Type *lhs = check_expr(b->lhs);
+      Type *rhs = check_expr(b->rhs);
+      if (b->op == TokenKind::EqEq) {
+        // == needs both sides to have the same type, and gives bool.
+        if (!expect_type(b->rhs, rhs, lhs))
+          return types_.error();
+        return types_.boolean();
+      }
+      // + - * / need i64 on both sides, and give i64.
+      const bool ok_l = expect_type(b->lhs, lhs, types_.i64());
+      const bool ok_r = expect_type(b->rhs, rhs, types_.i64());
+      return ok_l && ok_r ? types_.i64() : types_.error();
     }
     }
+    return types_.error();
+  }
+
+  // Reports a mismatch unless `actual` is `expected`. Error types never
+  // report again: the real problem was already printed.
+  bool expect_type(Expr *where, Type *actual, Type *expected) {
+    if (actual == expected)
+      return true;
+    if (actual == types_.error() || expected == types_.error())
+      return false;
+    diag_.error(where->offset, "expected '" + type_name(expected) +
+                                   "', found '" + type_name(actual) + "'");
+    return false;
   }
 };

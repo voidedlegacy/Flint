@@ -3,6 +3,7 @@
 #include "lexer.hpp"
 #include "parser.hpp"
 #include "sema.hpp"
+#include "types.hpp"
 #include <cstdio>
 #include <fstream>
 #include <optional>
@@ -39,16 +40,18 @@ int main(int argc, char **argv) {
 
   // Stage 2: parse.
   const auto fns = parser.parse_file();
+  if (diag.error_count() > 0)
+    return 1; // don't analyze a broken tree
+
+  // Stage 3: names and types.
+  TypeTable types(arena);
+  Checker checker(diag, types);
+  checker.run(fns);
+
   for (FnDecl *fn : fns) {
     dump(fn);
     std::printf("\n");
   }
-  if (diag.error_count() > 0)
-    return 1; // don't analyse a broken tree
-
-  // Stage 3: resolve names.
-  Resolver resolver(diag);
-  resolver.run(fns);
 
   return diag.error_count() > 0 ? 1 : 0;
 }
