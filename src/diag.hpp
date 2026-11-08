@@ -4,8 +4,8 @@
 #include <string_view>
 
 // Turns byte offsets into "file:line:col" messages with the source line
-// and a caret under the problem. Line/col are only computed when an
-// error is actually reported, so the lexer stays fast.
+// and a caret under the problem. Line/col are only computed when a
+// message is actually reported, so the lexer stays fast.
 class Diagnostics {
 public:
   Diagnostics(std::string_view path, std::string_view source)
@@ -13,7 +13,22 @@ public:
 
   void error(std::uint32_t offset, std::string_view msg) {
     ++errors_;
+    report("error", offset, msg);
+  }
 
+  // Extra context for the previous error, e.g. "value was moved here".
+  void note(std::uint32_t offset, std::string_view msg) {
+    report("note", offset, msg);
+  }
+
+  int error_count() const { return errors_; }
+
+private:
+  std::string_view path_;
+  std::string_view src_;
+  int errors_ = 0;
+
+  void report(const char *label, std::uint32_t offset, std::string_view msg) {
     // Find the start of the line containing `offset`, and its number.
     std::uint32_t line = 1;
     std::uint32_t line_start = 0;
@@ -31,8 +46,8 @@ public:
     const std::string_view text =
         src_.substr(line_start, line_end - line_start);
 
-    std::fprintf(stderr, "%.*s:%u:%u: error: %.*s\n",
-                 static_cast<int>(path_.size()), path_.data(), line, col,
+    std::fprintf(stderr, "%.*s:%u:%u: %s: %.*s\n",
+                 static_cast<int>(path_.size()), path_.data(), line, col, label,
                  static_cast<int>(msg.size()), msg.data());
     std::fprintf(stderr, "    %.*s\n    ", static_cast<int>(text.size()),
                  text.data());
@@ -42,11 +57,4 @@ public:
     }
     std::fputs("^\n", stderr);
   }
-
-  int error_count() const { return errors_; }
-
-private:
-  std::string_view path_;
-  std::string_view src_;
-  int errors_ = 0;
 };

@@ -1,4 +1,5 @@
 #include "arena.hpp"
+#include "borrowck.hpp"
 #include "diag.hpp"
 #include "lexer.hpp"
 #include "parser.hpp"
@@ -52,6 +53,13 @@ int main(int argc, char **argv) {
     dump(fn);
     std::printf("\n");
   }
+
+  if (diag.error_count() > 0)
+    return 1; // borrow checking needs valid types
+
+  // Stage 4: ownership and borrows.
+  BorrowChecker borrowck(diag);
+  borrowck.run(fns);
 
   return diag.error_count() > 0 ? 1 : 0;
 }
