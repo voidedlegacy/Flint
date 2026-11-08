@@ -68,7 +68,13 @@ public:
       s = arena_.make<ReturnStmt>(t.offset, value);
     } else {
       Expr *e = parse_expr();
-      s = arena_.make<ExprStmt>(t.offset, e);
+      if (tok_.kind == TokenKind::Assign) {
+        bump(); // '='
+        Expr *value = parse_expr();
+        s = arena_.make<AssignStmt>(t.offset, e, value);
+      } else {
+        s = arena_.make<ExprStmt>(t.offset, e);
+      }
     }
 
     if (tok_.kind == TokenKind::Semicolon) {

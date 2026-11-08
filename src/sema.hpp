@@ -77,12 +77,34 @@ private:
     case StmtKind::Expr:
       resolve_expr(cast<ExprStmt>(s)->expr);
       break;
+    case StmtKind::Assign: {
+      auto *a = cast<AssignStmt>(s);
+      resolve_expr(a->value);
+      resolve_expr(a->target);
+      check_assign_target(a->target);
+      break;
+    }
     case StmtKind::Block:
       push_scope();
       for (Stmt *child : cast<BlockStmt>(s)->stmts)
         resolve_stmt(child);
       pop_scope();
       break;
+    }
+  }
+
+  // Rule: you may only assign to a variable, and only if it is a `var`.
+  void check_assign_target(Expr *target) {
+    if (target->kind != ExprKind::Ident) {
+      diag_.error(target->offset, "can only assign to a variable");
+      return;
+    }
+    auto *id = cast<IdentExpr>(target);
+    if (id->decl && !id->decl->is_mut) {
+      diag_.error(
+          id->offset,
+          "cannot assign to '" + std::string(id->name) +
+              "': it was declared with 'let' (use 'var' to make it mutable)");
     }
   }
 
@@ -95,7 +117,7 @@ private:
       id->decl = lookup(id->name);
       if (!id->decl) {
         diag_.error(id->offset,
-                    "'undeclared name '" + std::string(id->name) + "'");
+                    "undeclared name '" + std::string(id->name) + "'");
       }
       break;
     }

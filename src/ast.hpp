@@ -110,7 +110,7 @@ inline void dump(Expr *e) {
 
 // ---------------------------------------------------------------- statements
 
-enum class StmtKind : std::uint8_t { Var, Return, Expr, Block };
+enum class StmtKind : std::uint8_t { Var, Return, Expr, Block, Assign };
 
 struct Stmt {
   StmtKind kind;
@@ -152,6 +152,16 @@ struct BlockStmt : Stmt {
       : Stmt{Kind, off}, stmts(s) {}
 };
 
+// target = value 			Only a `var` may be assigned to.
+struct AssignStmt : Stmt {
+  static constexpr StmtKind Kind = StmtKind::Assign;
+  Expr *target;
+  Expr *value;
+
+  AssignStmt(std::uint32_t off, Expr *t, Expr *v)
+      : Stmt{Kind, off}, target(t), value(v) {}
+};
+
 template <typename T> T *cast(Stmt *s) {
   assert(s->kind == T::Kind);
   return static_cast<T *>(s);
@@ -180,6 +190,15 @@ inline void dump(Stmt *s) {
   case StmtKind::Expr:
     dump(cast<ExprStmt>(s)->expr);
     break;
+  case StmtKind::Assign: {
+    auto *a = cast<AssignStmt>(s);
+    std::printf("(= ");
+    dump(a->target);
+    std::printf(" ");
+    dump(a->value);
+    std::printf(")");
+    break;
+  }
   case StmtKind::Block:
     std::printf("(block");
     for (Stmt *child : cast<BlockStmt>(s)->stmts) {

@@ -1,0 +1,8 @@
+fn main() {
+	var count = 0
+	let limit = 10
+	count = count + 1 // ok: count is a var
+	limit = 20        // error: limit is a let
+	1 + 2 = count     // error: not a variable
+	missing = 5       // error: never declared
+}
