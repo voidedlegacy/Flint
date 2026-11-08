@@ -1,0 +1,21 @@
+fn main() {
+	var a = 1
+	var b = 2
+
+	let r1 = &a
+	let r2 = &a		// ok: any number of shared borrows
+	let m = &mut a	// error: a is borrowed by r1, still used below
+
+	let w = &mut b
+	let peek = b    // error: b is mutably borrowed, w still used below
+	b = 5           // error: same reason
+	let keep = w    // last use of w: the borrow ends here
+
+	b = 6           // ok: nobody uses w anymore
+	let w2 = &mut b 
+	let w3 = &mut b // error: w2 is still used below
+	let use2 = w2
+
+	let c = 3
+	let bad = &mut c // error: c is a let
+}
