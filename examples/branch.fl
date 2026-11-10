@@ -1,0 +1,17 @@
+fn main() {
+	var x = 10
+	var result = 0
+
+	if x == 10 {
+		result = 1
+	} else {
+		result = 2
+	}
+
+	if result == 2 {
+		return 99
+	} else if x == 10 {
+		result = result + 41
+	}
+	return result
+}

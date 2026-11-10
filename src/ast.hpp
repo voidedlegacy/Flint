@@ -112,7 +112,7 @@ inline void dump(Expr *e) {
 
 // ---------------------------------------------------------------- statements
 
-enum class StmtKind : std::uint8_t { Var, Return, Expr, Block, Assign };
+enum class StmtKind : std::uint8_t { Var, Return, Expr, Block, Assign, If };
 
 struct Stmt {
   StmtKind kind;
@@ -165,6 +165,17 @@ struct AssignStmt : Stmt {
       : Stmt{Kind, off}, target(t), value(v) {}
 };
 
+// if cond { ... } else { ... }  `else if` is an IfStmt in the else slot.
+struct IfStmt : Stmt {
+  static constexpr StmtKind Kind = StmtKind::If;
+  Expr *cond;
+  BlockStmt *then_block;
+  Stmt *else_stmt; // nullptr, a BlockStmt, or another IfStmt
+
+  IfStmt(std::uint32_t off, Expr *c, BlockStmt *t, Stmt *e)
+      : Stmt{Kind, off}, cond(c), then_block(t), else_stmt(e) {}
+};
+
 template <typename T> T *cast(Stmt *s) {
   assert(s->kind == T::Kind);
   return static_cast<T *>(s);
@@ -202,6 +213,18 @@ inline void dump(Stmt *s) {
     dump(a->target);
     std::printf(" ");
     dump(a->value);
+    std::printf(")");
+    break;
+  }
+  case StmtKind::If: {
+    auto *i = cast<IfStmt>(s);
+    std::printf("(if ");
+    std::printf(" ");
+    dump(i->then_block);
+    if (i->else_stmt) {
+      std::printf(" ");
+      dump(i->else_stmt);
+    }
     std::printf(")");
     break;
   }

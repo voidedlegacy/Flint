@@ -1,0 +1,11 @@
+fn main() {
+	var a = 1
+	var b = 2
+	let m = &mut a
+
+	if b == 2 {
+		let k = m        // m moves, but only on this path
+	}
+	let again = m        // error: m might have been moved above
+	return 0
+}

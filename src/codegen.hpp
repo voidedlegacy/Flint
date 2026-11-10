@@ -55,6 +55,20 @@ private:
 
   void line(const std::string &s) { body_ += "  " + s + "\n"; }
 
+  // Starts a new basic block. The previous block must already have ended
+  // with a terminator (br or ret).
+  void label(const std::string &name) {
+    body_ += name + ":\n";
+    terminated_ = false;
+  }
+
+  // Ends the current block with a jump, unless it already returned.
+  void branch_to(const std::string &name) {
+    if (!terminated_)
+      line("br label %" + name);
+    terminated_ = true;
+  }
+
   // ------------------------------------------------------------ functions
 
   std::string emit_fn(FnDecl *fn) {
@@ -111,11 +125,43 @@ private:
     case StmtKind::Expr:
       emit_expr(cast<ExprStmt>(s)->expr); // result unused
       break;
+    case StmtKind::If:
+      emit_if(cast<IfStmt>(s));
+      break;
     case StmtKind::Block:
       for (Stmt *child : cast<BlockStmt>(s)->stmts)
         emit_stmt(child);
       break;
     }
+  }
+
+  //   entry:  %c = ...                    thenN:  ...
+  //           br i1 %c, %thenN, %elseN            br %endN
+  //                                       elseN:  ...
+  //                                               br %endN
+  //                                       endN:   (code after the if)
+  void emit_if(IfStmt *i) {
+    const std::string n = std::to_string(next_label_++);
+    const std::string then_name = "then" + n;
+    const std::string else_name = "else" + n;
+    const std::string end_name = "end" + n;
+
+    const std::string cond = emit_expr(i->cond);
+    line("br i1 " + cond + ", label %" + then_name + ", label %" +
+         (i->else_stmt ? else_name : end_name));
+    terminated_ = true;
+
+    label(then_name);
+    emit_stmt(i->then_block);
+    branch_to(end_name);
+
+    if (i->else_stmt) {
+      label(else_name);
+      emit_stmt(i->else_stmt);
+      branch_to(end_name);
+    }
+
+    label(end_name);
   }
 
   // ------------------------------------------------------------ expressions

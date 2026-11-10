@@ -62,6 +62,8 @@ public:
                                t.kind == TokenKind::KwVar, init);
     } else if (t.kind == TokenKind::LBrace) {
       s = parse_block();
+    } else if (t.kind == TokenKind::KwIf) {
+      s = parse_if();
     } else if (t.kind == TokenKind::KwReturn) {
       bump();
       Expr *value = tok_.kind == TokenKind::Semicolon ? nullptr : parse_expr();
@@ -116,6 +118,21 @@ private:
       bump(); // inserted after '}'
     panicking_ = false;
     return arena_.make<FnDecl>(fn_tok.offset, lex_.text(name), body);
+  }
+
+  // if cond { ... } [else { ... } | else if ...]
+  // Like Go, `else` must be on the same line as the closing `}`.
+  Stmt *parse_if() {
+    const Token if_tok = tok_;
+    bump(); // 'if'
+    Expr *cond = parse_expr();
+    BlockStmt *then_block = parse_block();
+    Stmt *else_stmt = nullptr;
+    if (tok_.kind == TokenKind::KwElse) {
+      bump();
+      else_stmt = tok_.kind == TokenKind::KwIf ? parse_if() : parse_block();
+    }
+    return arena_.make<IfStmt>(if_tok.offset, cond, then_block, else_stmt);
   }
 
   // { stmt; stmt; ... }
@@ -187,7 +204,9 @@ private:
       return inner;
     }
     default:
-      error(t, "expected an expression");
+      error(t, t.kind == TokenKind::KwElse
+                   ? "'else' must be on the same line as the '}' before it"
+                   : "expected an expression");
       bump(); // skip the bad token so we always make progress
       return arena_.make<IntExpr>(t.offset, 0u); // placeholder, never null
     }

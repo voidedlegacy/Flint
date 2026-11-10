@@ -2,6 +2,7 @@
 #include "ast.hpp"
 #include "diag.hpp"
 #include "types.hpp"
+#include <algorithm>
 #include <cstdint>
 #include <span>
 #include <string>
@@ -100,6 +101,14 @@ private:
       for (Stmt *child : cast<BlockStmt>(s)->stmts)
         record_last_uses(child);
       break;
+    case StmtKind::If: {
+      auto *i = cast<IfStmt>(s);
+      record_last_uses(i->cond);
+      record_last_uses(i->then_block);
+      if (i->else_stmt)
+        record_last_uses(i->else_stmt);
+      break;
+    }
     }
   }
 
@@ -159,6 +168,47 @@ private:
       for (Stmt *child : cast<BlockStmt>(s)->stmts)
         check_stmt(child);
       break;
+    case StmtKind::If:
+      check_if(cast<IfStmt>(s));
+      break;
+    }
+  }
+
+  // Both branches start from the same state. Afterwards we keep the
+  // *worst case* of the two: moved on either path = moved, and a variable
+  // may hold the loans from either path.
+  //
+  //              state S
+  //          ┌──────┴──────┐
+  //    then: S → T    else: S → E
+  //          └──────┬──────┘
+  //          after: T ∪ E
+
+  void check_if(IfStmt *i) {
+    eval(i->cond);
+
+    const auto moved_before = moved_;
+    const auto holds_before = holds_;
+
+    check_stmt(i->then_block);
+    auto moved_then = std::move(moved_);
+    auto holds_then = std::move(holds_);
+
+    moved_ = moved_before;
+    holds_ = holds_before;
+    if (i->else_stmt)
+      check_stmt(i->else_stmt);
+
+    // Merge the then-path into the else-path state.
+    for (const auto &[var, where] : moved_then)
+      moved_.try_emplace(var, where);
+    for (auto &[var, loans] : holds_then) {
+      auto &merged = holds_[var];
+      for (LoanId lid : loans) {
+        if (std::find(merged.begin(), merged.end(), lid) == merged.end()) {
+          merged.push_back(lid);
+        }
+      }
     }
   }
 

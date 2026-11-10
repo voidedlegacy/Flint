@@ -93,6 +93,14 @@ private:
       expect_type(a->value, value, target);
       break;
     }
+    case StmtKind::If: {
+      auto *i = cast<IfStmt>(s);
+      expect_type(i->cond, check_expr(i->cond), types_.boolean());
+      check_stmt(i->then_block);
+      if (i->else_stmt)
+        check_stmt(i->else_stmt);
+      break;
+    }
     case StmtKind::Block:
       push_scope();
       for (Stmt *child : cast<BlockStmt>(s)->stmts)
