@@ -20,6 +20,8 @@ enum class TokenKind : std::uint8_t {
   KwStruct,
   KwIf,
   KwElse,
+  KwTrue,
+  KwFalse,
   KwFor,
   KwReturn,
   KwUnsafe,
@@ -38,6 +40,11 @@ enum class TokenKind : std::uint8_t {
   // Operators
   Assign,
   EqEq, // = ==
+  NotEq,
+  Less,
+  LessEq,
+  Greater,
+  GreaterEq,
   Plus,
   Minus,
   Star,
@@ -63,6 +70,8 @@ constexpr bool ends_statement(TokenKind k) {
   case TokenKind::RParen:
   case TokenKind::RBrace:
   case TokenKind::KwReturn:
+  case TokenKind::KwTrue:
+  case TokenKind::KwFalse:
     return true;
   default:
     return false;
@@ -72,9 +81,24 @@ constexpr bool ends_statement(TokenKind k) {
 static_assert(ends_statement(TokenKind::RParen));
 static_assert(!ends_statement(TokenKind::Assign));
 
+// == != <= > >= all produce a bool.
+constexpr bool is_comparison(TokenKind k) {
+  switch (k) {
+  case TokenKind::EqEq:
+  case TokenKind::NotEq:
+  case TokenKind::Less:
+  case TokenKind::LessEq:
+  case TokenKind::Greater:
+  case TokenKind::GreaterEq:
+    return true;
+  default:
+    return false;
+  }
+}
+
 // Keyword table: The lexer scans a word, then asks this table
 // whether it is a keyword or a plain identifier.
-inline constexpr std::array<std::pair<std::string_view, TokenKind>, 11>
+inline constexpr std::array<std::pair<std::string_view, TokenKind>, 13>
     keywords{{
         {"fn", TokenKind::KwFn},
         {"var", TokenKind::KwVar},
@@ -87,6 +111,8 @@ inline constexpr std::array<std::pair<std::string_view, TokenKind>, 11>
         {"return", TokenKind::KwReturn},
         {"unsafe", TokenKind::KwUnsafe},
         {"mut", TokenKind::KwMut},
+        {"true", TokenKind::KwTrue},
+        {"false", TokenKind::KwFalse},
     }};
 
 constexpr TokenKind keyword_or_ident(std::string_view word) {

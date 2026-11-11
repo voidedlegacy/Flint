@@ -151,6 +151,11 @@ private:
   static int precedence(TokenKind k) {
     switch (k) {
     case TokenKind::EqEq:
+    case TokenKind::NotEq:
+    case TokenKind::Less:
+    case TokenKind::LessEq:
+    case TokenKind::Greater:
+    case TokenKind::GreaterEq:
       return 1;
     case TokenKind::Plus:
     case TokenKind::Minus:
@@ -194,6 +199,10 @@ private:
       std::from_chars(text.data(), text.data() + text.size(), value);
       return arena_.make<IntExpr>(t.offset, value);
     }
+    case TokenKind::KwTrue:
+    case TokenKind::KwFalse:
+      bump();
+      return arena_.make<BoolExpr>(t.offset, t.kind == TokenKind::KwTrue);
     case TokenKind::Ident:
       bump();
       return arena_.make<IdentExpr>(t.offset, lex_.text(t));

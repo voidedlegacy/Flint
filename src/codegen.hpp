@@ -51,6 +51,13 @@ private:
     }
   }
 
+  // %r = icmp <pred> <type> %l, %rr
+  void cmp(const std::string &r, const char *pred, BinaryExpr *b,
+           const std::string &l, const std::string &rr) {
+    line(r + " = icmp " + pred + " " + llvm_type(b->lhs->type) + " " + l +
+         ", " + rr);
+  }
+
   std::string tmp() { return "%t" + std::to_string(next_tmp_++); }
 
   void line(const std::string &s) { body_ += "  " + s + "\n"; }
@@ -173,6 +180,8 @@ private:
     case ExprKind::Int:
       return std::to_string(cast<IntExpr>(e)->value);
 
+    case ExprKind::Bool:
+      return cast<BoolExpr>(e)->value ? "true" : "false";
     case ExprKind::Ident: {
       auto *id = cast<IdentExpr>(e);
       const std::string r = tmp();
@@ -221,7 +230,22 @@ private:
         line(r + " = sdiv i64 " + l + ", " + rr);
         break;
       case TokenKind::EqEq:
-        line(r + " = icmp eq " + llvm_type(b->lhs->type) + " " + l + ", " + rr);
+        cmp(r, "eq", b, l, rr);
+        break;
+      case TokenKind::NotEq:
+        cmp(r, "ne", b, l, rr);
+        break;
+      case TokenKind::Less:
+        cmp(r, "slt", b, l, rr);
+        break; // s = signed
+      case TokenKind::LessEq:
+        cmp(r, "sle", b, l, rr);
+        break;
+      case TokenKind::Greater:
+        cmp(r, "sgt", b, l, rr);
+        break;
+      case TokenKind::GreaterEq:
+        cmp(r, "sge", b, l, rr);
         break;
       default:
         break;

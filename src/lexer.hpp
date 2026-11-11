@@ -72,6 +72,12 @@ private:
       return make(TokenKind::Amp);
     case '=':
       return make(match('=') ? TokenKind::EqEq : TokenKind::Assign);
+    case '!':
+      return make(match('=') ? TokenKind::NotEq : TokenKind::Error);
+    case '<':
+      return make(match('=') ? TokenKind::LessEq : TokenKind::Less);
+    case '>':
+      return make(match('=') ? TokenKind::GreaterEq : TokenKind::Greater);
     case '"':
       return lex_string();
     default:

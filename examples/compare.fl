@@ -1,0 +1,17 @@
+fn main() {
+	let a = 5
+	let b = 7
+	var score = 0
+
+	if a < b { score = score + 1 }
+	if a <= 5 { score = score + 1 }
+	if b > a { score = score + 1 }
+	if b >= 8 { score = score + 100 }  // false: skipped
+	if a != b { score = score + 1 }
+
+	let done = true
+	if done == true { score = score + 38 }
+	if false { return 0 }
+
+	return score  // 42
+}

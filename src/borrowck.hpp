@@ -115,6 +115,7 @@ private:
   void record_last_uses(Expr *e) {
     switch (e->kind) {
     case ExprKind::Int:
+    case ExprKind::Bool:
       break;
     case ExprKind::Ident: {
       auto *id = cast<IdentExpr>(e);
@@ -218,6 +219,7 @@ private:
   std::vector<LoanId> eval(Expr *e) {
     switch (e->kind) {
     case ExprKind::Int:
+    case ExprKind::Bool:
       return {};
     case ExprKind::Ident: {
       auto *id = cast<IdentExpr>(e);

@@ -137,7 +137,8 @@ private:
     switch (e->kind) {
     case ExprKind::Int:
       return types_.i64();
-
+    case ExprKind::Bool:
+      return types_.boolean();
     case ExprKind::Ident: {
       auto *id = cast<IdentExpr>(e);
       id->decl = lookup(id->name);
@@ -164,11 +165,17 @@ private:
       auto *b = cast<BinaryExpr>(e);
       Type *lhs = check_expr(b->lhs);
       Type *rhs = check_expr(b->rhs);
-      if (b->op == TokenKind::EqEq) {
-        // == needs both sides to have the same type, and gives bool.
+      if (b->op == TokenKind::EqEq || b->op == TokenKind::NotEq) {
+        // == and != need both sides to have the same type, and give bool.
         if (!expect_type(b->rhs, rhs, lhs))
           return types_.error();
         return types_.boolean();
+      }
+      if (is_comparison(b->op)) {
+        // < <= > >= compare two i64 and give bool.
+        const bool ok_l = expect_type(b->lhs, lhs, types_.i64());
+        const bool ok_r = expect_type(b->rhs, rhs, types_.i64());
+        return ok_l && ok_r ? types_.boolean() : types_.error();
       }
       // + - * / need i64 on both sides, and give i64.
       const bool ok_l = expect_type(b->lhs, lhs, types_.i64());

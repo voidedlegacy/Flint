@@ -9,7 +9,7 @@
 
 // Every expression node starts with this header. The kind tag tells us
 // which concrete struct it really is, so we can cast safely.
-enum class ExprKind : std::uint8_t { Int, Ident, Unary, Binary };
+enum class ExprKind : std::uint8_t { Int, Bool, Ident, Unary, Binary };
 
 struct Expr {
   ExprKind kind;
@@ -22,6 +22,14 @@ struct IntExpr : Expr {
   std::uint64_t value;
 
   IntExpr(std::uint32_t off, std::uint64_t v) : Expr{Kind, off}, value(v) {}
+};
+
+// true or false
+struct BoolExpr : Expr {
+  static constexpr ExprKind Kind = ExprKind::Bool;
+  bool value;
+
+  BoolExpr(std::uint32_t off, bool v) : Expr{Kind, off}, value(v) {}
 };
 
 struct VarStmt; // defined below; IdentExpr points at its declaration
@@ -72,6 +80,16 @@ inline const char *op_text(TokenKind op) {
     return "/";
   case TokenKind::EqEq:
     return "==";
+  case TokenKind::NotEq:
+    return "!=";
+  case TokenKind::Less:
+    return "<";
+  case TokenKind::LessEq:
+    return "<=";
+  case TokenKind::Greater:
+    return ">";
+  case TokenKind::GreaterEq:
+    return ">=";
   case TokenKind::Amp:
     return "&";
   default:
@@ -86,6 +104,10 @@ inline void dump(Expr *e) {
     std::printf("%llu",
                 static_cast<unsigned long long>(cast<IntExpr>(e)->value));
     break;
+  case ExprKind::Bool: {
+    std::printf("%s", cast<BoolExpr>(e)->value ? "true" : "false");
+    break;
+  }
   case ExprKind::Ident: {
     const auto n = cast<IdentExpr>(e)->name;
     std::printf("%.*s", static_cast<int>(n.size()), n.data());
