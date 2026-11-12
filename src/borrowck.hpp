@@ -7,6 +7,7 @@
 #include <span>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 // Copy types are duplicated on use. Everything else is *moved*: after
@@ -33,8 +34,9 @@ inline bool is_copy(const Type *t) {
 //                      &mut x  → x may not be touched at all
 //
 // A loan is alive while some variable holding it is still used later
-// (like Rust's non-lexical lifetimes). Flint has no loops or branches
-// yet, so "later" simply means "further down in the source".
+// (like Rust's non-lexical lifetimes). "Later" is measured by source
+// offset, with one twist for loops: a use inside a loop body happens
+// again on the next iteration, so it counts as a use at the loop's end.
 //
 //   var a = 1
 //   let m = &mut a     loan #0: &mut a, held by m
@@ -49,9 +51,8 @@ public:
 
   void run(std::span<FnDecl *> fns) {
     for (FnDecl *fn : fns) {
-      moved_.clear();
+      state_ = {};
       loans_.clear();
-      holds_.clear();
       last_use_.clear();
       record_last_uses(fn->body);
       check_stmt(fn->body);
@@ -67,14 +68,38 @@ private:
     std::uint32_t offset; // where the & or &mut is
   };
 
+  // Everything that changes as we walk through the code. Branches and
+  // loops copy it, check each path, and merge the copies back together.
+  struct State {
+    std::unordered_map<const VarStmt *, std::uint32_t>
+        moved; // var → where it was moved
+    std::unordered_map<const VarStmt *, std::vector<LoanId>>
+        holds; // var → loans inside its value
+  };
+
+  struct LoopRange {
+    std::uint32_t start; // offset of `for`
+    std::uint32_t end;   // offset of the body's closing `}`
+  };
+
   Diagnostics &diag_;
-  std::unordered_map<const VarStmt *, std::uint32_t>
-      moved_;               // var → where it was moved
+  State state_;
   std::vector<Loan> loans_; // every loan, by id
-  std::unordered_map<const VarStmt *, std::vector<LoanId>>
-      holds_; // var → loans inside its value
   std::unordered_map<const VarStmt *, std::uint32_t>
-      last_use_; // var → offset of its last read
+      last_use_;                 // var → offset of its last read
+  std::vector<LoopRange> loops_; // loops we are inside (pre-pass)
+  bool silent_ = false;          // true while finding a loop's fixpoint
+
+  // While a loop is being analysed to a fixpoint, the body is walked
+  // several times. Only the final walk may report, or errors would repeat.
+  void error(std::uint32_t offset, const std::string &msg) {
+    if (!silent_)
+      diag_.error(offset, msg);
+  }
+  void note(std::uint32_t offset, const std::string &msg) {
+    if (!silent_)
+      diag_.note(offset, msg);
+  }
 
   // ------------------------------------------------------------ last uses
 
@@ -97,10 +122,6 @@ private:
         record_last_uses(r->value);
       break;
     }
-    case StmtKind::Block:
-      for (Stmt *child : cast<BlockStmt>(s)->stmts)
-        record_last_uses(child);
-      break;
     case StmtKind::If: {
       auto *i = cast<IfStmt>(s);
       record_last_uses(i->cond);
@@ -109,6 +130,18 @@ private:
         record_last_uses(i->else_stmt);
       break;
     }
+    case StmtKind::For: {
+      auto *f = cast<ForStmt>(s);
+      loops_.push_back({f->offset, f->body->end_offset});
+      record_last_uses(f->cond);
+      record_last_uses(f->body);
+      loops_.pop_back();
+      break;
+    }
+    case StmtKind::Block:
+      for (Stmt *child : cast<BlockStmt>(s)->stmts)
+        record_last_uses(child);
+      break;
     }
   }
 
@@ -119,9 +152,22 @@ private:
       break;
     case ExprKind::Ident: {
       auto *id = cast<IdentExpr>(e);
+      std::uint32_t when = id->offset;
+      // Inside a loop, a variable from outside the loop is used again
+      // on the next iteration: treat it as used at the loop's end.
+      //
+      //   var r = &a
+      //   for c {
+      //       let x = r    ← runs again after `a = 5` below
+      //       a = 5        ✗ r is still alive here
+      //   }
+      for (const LoopRange &loop : loops_) {
+        if (id->decl->offset < loop.start)
+          when = std::max(when, loop.end);
+      }
       auto &last = last_use_[id->decl];
-      if (id->offset > last)
-        last = id->offset;
+      if (when > last)
+        last = when;
       break;
     }
     case ExprKind::Unary:
@@ -142,7 +188,7 @@ private:
     switch (s->kind) {
     case StmtKind::Var: {
       auto *v = cast<VarStmt>(s);
-      holds_[v] = eval(v->init);
+      state_.holds[v] = eval(v->init);
       break;
     }
     case StmtKind::Return: {
@@ -160,57 +206,110 @@ private:
       if (a->target->kind == ExprKind::Ident) {
         auto *id = cast<IdentExpr>(a->target);
         check_conflicts(id, /*want_mut=*/true, "assign to", "");
-        moved_.erase(id->decl);              // fresh value: usable again
-        holds_[id->decl] = std::move(loans); // old loans are dropped
+        state_.moved.erase(id->decl);              // fresh value: usable again
+        state_.holds[id->decl] = std::move(loans); // old loans are dropped
       }
       break;
     }
+    case StmtKind::If:
+      check_if(cast<IfStmt>(s));
+      break;
+    case StmtKind::For:
+      check_for(cast<ForStmt>(s));
+      break;
     case StmtKind::Block:
       for (Stmt *child : cast<BlockStmt>(s)->stmts)
         check_stmt(child);
       break;
-    case StmtKind::If:
-      check_if(cast<IfStmt>(s));
-      break;
     }
   }
 
-  // Both branches start from the same state. Afterwards we keep the
-  // *worst case* of the two: moved on either path = moved, and a variable
-  // may hold the loans from either path.
-  //
-  //              state S
-  //          ┌──────┴──────┐
-  //    then: S → T    else: S → E
-  //          └──────┬──────┘
-  //          after: T ∪ E
-
-  void check_if(IfStmt *i) {
-    eval(i->cond);
-
-    const auto moved_before = moved_;
-    const auto holds_before = holds_;
-
-    check_stmt(i->then_block);
-    auto moved_then = std::move(moved_);
-    auto holds_then = std::move(holds_);
-
-    moved_ = moved_before;
-    holds_ = holds_before;
-    if (i->else_stmt)
-      check_stmt(i->else_stmt);
-
-    // Merge the then-path into the else-path state.
-    for (const auto &[var, where] : moved_then)
-      moved_.try_emplace(var, where);
-    for (auto &[var, loans] : holds_then) {
-      auto &merged = holds_[var];
+  // Adds everything in `from` to `into`: moved on either path = moved,
+  // and a variable may hold the loans from either path.
+  static void merge_into(State &into, const State &from) {
+    for (const auto &[var, where] : from.moved)
+      into.moved.try_emplace(var, where);
+    for (const auto &[var, loans] : from.holds) {
+      auto &merged = into.holds[var];
       for (LoanId lid : loans) {
         if (std::find(merged.begin(), merged.end(), lid) == merged.end()) {
           merged.push_back(lid);
         }
       }
     }
+  }
+
+  static bool same_state(const State &a, const State &b) {
+    if (a.moved.size() != b.moved.size())
+      return false;
+    for (const auto &[var, where] : a.moved) {
+      if (!b.moved.contains(var))
+        return false;
+    }
+    auto loan_set = [](const State &s) {
+      std::unordered_set<std::uint64_t> out; // (var, loan) pairs
+      for (const auto &[var, loans] : s.holds) {
+        for (LoanId lid : loans) {
+          out.insert(reinterpret_cast<std::uintptr_t>(var) * 31 + lid);
+        }
+      }
+      return out;
+    };
+    return loan_set(a) == loan_set(b);
+  }
+
+  //              state S
+  //          ┌──────┴──────┐
+  //    then: S → T    else: S → E
+  //          └──────┬──────┘
+  //          after: T ∪ E
+  void check_if(IfStmt *i) {
+    eval(i->cond);
+    const State before = state_;
+
+    check_stmt(i->then_block);
+    State after_then = std::move(state_);
+
+    state_ = before;
+    if (i->else_stmt)
+      check_stmt(i->else_stmt);
+    merge_into(state_, after_then);
+  }
+
+  // A loop body can run many times, so the state at the top of the body
+  // is "the state before the loop, OR the state after any number of
+  // iterations". We find it by repeating the body until nothing changes
+  // (a *fixpoint*), silently, then check it once more for real.
+  //
+  //   entry ──▶ [cond] ──▶ [body] ──┐
+  //               ▲                 │   top = entry ∪ end-of-body
+  //               └─────────────────┘
+  void check_for(ForStmt *f) {
+    const State entry = state_;
+    State top = entry;
+
+    const bool was_silent = silent_;
+    silent_ = true;
+    for (int round = 0; round < 32;
+         ++round) { // states only grow, so this ends fast
+      state_ = top;
+      eval(f->cond);
+      check_stmt(f->body);
+      State next = entry;
+      merge_into(next, state_);
+      if (same_state(next, top))
+        break;
+      top = std::move(next);
+    }
+    silent_ = was_silent;
+
+    // The reporting pass, starting from the fixpoint.
+    state_ = top;
+    eval(f->cond);
+    check_stmt(f->body);
+
+    // The loop exits after the condition, from the top-of-loop state.
+    merge_into(state_, top);
   }
 
   // ------------------------------------------------------------ expressions
@@ -226,11 +325,11 @@ private:
       require_not_moved(id, "use");
       check_conflicts(id, /*want_mut=*/false, "use", "");
       if (is_copy(id->type))
-        return holds_[id->decl]; // copy keeps both
+        return state_.holds[id->decl]; // copy keeps both
       // Move: the loans travel with the value and leave the old variable.
-      moved_.try_emplace(id->decl, id->offset);
-      std::vector<LoanId> loans = std::move(holds_[id->decl]);
-      holds_[id->decl].clear();
+      state_.moved.try_emplace(id->decl, id->offset);
+      std::vector<LoanId> loans = std::move(state_.holds[id->decl]);
+      state_.holds[id->decl].clear();
       return loans;
     }
     case ExprKind::Unary: {
@@ -271,11 +370,17 @@ private:
     require_not_moved(id, "borrow");
 
     if (u->is_mut && !id->decl->is_mut) {
-      diag_.error(id->offset, "cannot borrow '" + std::string(id->name) +
-                                  "' as mutable: it was declared with 'let'");
+      error(id->offset, "cannot borrow '" + std::string(id->name) +
+                            "' as mutable: it was declared with 'let'");
     }
     check_conflicts(id, u->is_mut, "borrow", u->is_mut ? " as mutable" : "");
 
+    // A loop body runs this line again on every pass of the fixpoint.
+    // Reuse the loan created here last time, so the state can settle.
+    for (LoanId lid = 0; lid < loans_.size(); ++lid) {
+      if (loans_[lid].offset == u->offset)
+        return {lid};
+    }
     loans_.push_back({id->decl, u->is_mut, u->offset});
     return {static_cast<LoanId>(loans_.size() - 1)};
   }
@@ -283,12 +388,17 @@ private:
   // ------------------------------------------------------------ the rules
 
   void require_not_moved(IdentExpr *id, const char *action) {
-    const auto it = moved_.find(id->decl);
-    if (it == moved_.end())
+    const auto it = state_.moved.find(id->decl);
+    if (it == state_.moved.end())
       return;
-    diag_.error(id->offset, std::string(action) + " of moved value '" +
-                                std::string(id->name) + "'");
-    diag_.note(it->second, "'" + std::string(id->name) + "' was moved here");
+    const std::string name(id->name);
+    error(id->offset, std::string(action) + " of moved value '" + name + "'");
+    // A move *after* this use in the source can only have happened on
+    // an earlier trip around a loop.
+    note(it->second, "'" + name + "' was moved here" +
+                         (it->second >= id->offset
+                              ? ", in the previous iteration of the loop"
+                              : ""));
   }
 
   // Is there a live loan on `id` that forbids this access?
@@ -296,7 +406,7 @@ private:
   //   want_mut = true  (write, &mut x):     blocked by any live loan
   void check_conflicts(IdentExpr *id, bool want_mut, const char *verb,
                        const char *suffix) {
-    for (const auto &[holder, loan_ids] : holds_) {
+    for (const auto &[holder, loan_ids] : state_.holds) {
       const auto last = last_use_.find(holder);
       if (last == last_use_.end() || last->second <= id->offset)
         continue; // holder is done
@@ -309,14 +419,13 @@ private:
           continue; // reading during a shared borrow is fine
 
         const std::string name(id->name);
-        diag_.error(id->offset, "cannot " + std::string(verb) + " '" + name +
-                                    "'" + suffix + " while it is " +
-                                    (loan.is_mut ? "mutably " : "") +
-                                    "borrowed");
-        diag_.note(loan.offset, "'" + name + "' was " +
-                                    (loan.is_mut ? "mutably " : "") +
-                                    "borrowed here");
-        diag_.note(last->second, "the borrow is still used here");
+        error(id->offset, "cannot " + std::string(verb) + " '" + name + "'" +
+                              suffix + " while it is " +
+                              (loan.is_mut ? "mutably " : "") + "borrowed");
+        note(loan.offset, "'" + name + "' was " +
+                              (loan.is_mut ? "mutably " : "") +
+                              "borrowed here");
+        note(last->second, "the borrow is still used here");
         return; // one report per access is enough
       }
     }

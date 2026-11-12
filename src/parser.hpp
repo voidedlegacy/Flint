@@ -64,6 +64,8 @@ public:
       s = parse_block();
     } else if (t.kind == TokenKind::KwIf) {
       s = parse_if();
+    } else if (t.kind == TokenKind::KwFor) {
+      s = parse_for();
     } else if (t.kind == TokenKind::KwReturn) {
       bump();
       Expr *value = tok_.kind == TokenKind::Semicolon ? nullptr : parse_expr();
@@ -135,6 +137,17 @@ private:
     return arena_.make<IfStmt>(if_tok.offset, cond, then_block, else_stmt);
   }
 
+  // for cond { ... } or for { ... } (forever)
+  Stmt *parse_for() {
+    const Token for_tok = tok_;
+    bump(); // 'for'
+    Expr *cond = tok_.kind == TokenKind::LBrace
+                     ? arena_.make<BoolExpr>(for_tok.offset, true)
+                     : parse_expr();
+    BlockStmt *body = parse_block();
+    return arena_.make<ForStmt>(for_tok.offset, cond, body);
+  }
+
   // { stmt; stmt; ... }
   BlockStmt *parse_block() {
     const Token open = tok_;
@@ -143,8 +156,11 @@ private:
     while (tok_.kind != TokenKind::RBrace && !at_eof()) {
       stmts.push_back(parse_stmt());
     }
+    const Token close = tok_;
     expect(TokenKind::RBrace, "expected '}'");
-    return arena_.make<BlockStmt>(open.offset, arena_.copy_array(stmts));
+    auto *block = arena_.make<BlockStmt>(open.offset, arena_.copy_array(stmts));
+    block->end_offset = close.offset;
+    return block;
   }
 
   // 0 means "not a binary operator", which ends the loop above.

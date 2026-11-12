@@ -134,7 +134,15 @@ inline void dump(Expr *e) {
 
 // ---------------------------------------------------------------- statements
 
-enum class StmtKind : std::uint8_t { Var, Return, Expr, Block, Assign, If };
+enum class StmtKind : std::uint8_t {
+  Var,
+  Return,
+  Expr,
+  Block,
+  Assign,
+  If,
+  For
+};
 
 struct Stmt {
   StmtKind kind;
@@ -171,7 +179,8 @@ struct ExprStmt : Stmt {
 
 struct BlockStmt : Stmt {
   static constexpr StmtKind Kind = StmtKind::Block;
-  std::span<Stmt *> stmts; // stored in the arena
+  std::span<Stmt *> stmts;      // stored in the arena
+  std::uint32_t end_offset = 0; // where the closing '}' is
 
   BlockStmt(std::uint32_t off, std::span<Stmt *> s)
       : Stmt{Kind, off}, stmts(s) {}
@@ -196,6 +205,16 @@ struct IfStmt : Stmt {
 
   IfStmt(std::uint32_t off, Expr *c, BlockStmt *t, Stmt *e)
       : Stmt{Kind, off}, cond(c), then_block(t), else_stmt(e) {}
+};
+
+// for cond { ... } for { ... } loops forever (cond is `true`).
+struct ForStmt : Stmt {
+  static constexpr StmtKind Kind = StmtKind::For;
+  Expr *cond;
+  BlockStmt *body;
+
+  ForStmt(std::uint32_t off, Expr *c, BlockStmt *b)
+      : Stmt{Kind, off}, cond(c), body(b) {}
 };
 
 template <typename T> T *cast(Stmt *s) {
@@ -235,6 +254,15 @@ inline void dump(Stmt *s) {
     dump(a->target);
     std::printf(" ");
     dump(a->value);
+    std::printf(")");
+    break;
+  }
+  case StmtKind::For: {
+    auto *f = cast<ForStmt>(s);
+    std::printf("(for ");
+    dump(f->cond);
+    std::printf(" ");
+    dump(f->body);
     std::printf(")");
     break;
   }

@@ -132,6 +132,9 @@ private:
     case StmtKind::Expr:
       emit_expr(cast<ExprStmt>(s)->expr); // result unused
       break;
+    case StmtKind::For:
+      emit_for(cast<ForStmt>(s));
+      break;
     case StmtKind::If:
       emit_if(cast<IfStmt>(s));
       break;
@@ -140,6 +143,32 @@ private:
         emit_stmt(child);
       break;
     }
+  }
+
+  //           br %condN
+  //   condN:  %c = ...
+  //           br i1 %c, %bodyN, %endN
+  //   bodyN:  ...
+  //           br %condN          ← jump back: this is the loop
+  //   endN:   (code after the loop)
+  void emit_for(ForStmt *f) {
+    const std::string n = std::to_string(next_label_++);
+    const std::string cond_name = "cond" + n;
+    const std::string body_name = "body" + n;
+    const std::string end_name = "end" + n;
+
+    branch_to(cond_name);
+
+    label(cond_name);
+    const std::string cond = emit_expr(f->cond);
+    line("br i1 " + cond + ", label %" + body_name + ", label %" + end_name);
+    terminated_ = true;
+
+    label(body_name);
+    emit_stmt(f->body);
+    branch_to(cond_name);
+
+    label(end_name);
   }
 
   //   entry:  %c = ...                    thenN:  ...

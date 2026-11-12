@@ -93,6 +93,12 @@ private:
       expect_type(a->value, value, target);
       break;
     }
+    case StmtKind::For: {
+      auto *f = cast<ForStmt>(s);
+      expect_type(f->cond, check_expr(f->cond), types_.boolean());
+      check_stmt(f->body);
+      break;
+    }
     case StmtKind::If: {
       auto *i = cast<IfStmt>(s);
       expect_type(i->cond, check_expr(i->cond), types_.boolean());

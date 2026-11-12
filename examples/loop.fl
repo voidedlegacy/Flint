@@ -1,0 +1,14 @@
+fn main() {
+	var i = 1
+	var sum = 0
+	for i <= 8 {  // while-style loop: 1 + 2 + ... + 8 = 36
+		sum = sum + i
+		i = i + 1
+	}
+
+	var countdown = 3
+	for { // loops forever; only `return` gets out
+		if countdown == 0 { return sum + 6 } // 42
+		countdown = countdown - 1
+	}
+}
