@@ -109,13 +109,17 @@ int main(int argc, char **argv) {
     std::fprintf(stderr, "flint: cannot write '%s'\n", ll.c_str());
     return 2;
   }
-
-  const std::string cmd =
-      "clang " + opt + " -Wno-override-module -o '" + stem + "' '" + ll + "'";
+  #ifdef _WIN32
+    const std::string exe = stem + ".exe"; // Windows only runs filed ending in .exe
+  #else
+    const std::string exe = stem;
+  #endif
+    // Double quotes only work in bith /bin/sh (macOS, Linux) and cme.exe (Windows).
+    const std::string cmd = "clang " + opt + " -Wno-override-module -o \"" + exe + "\" \"" + ll + "\"";
   if (std::system(cmd.c_str()) != 0) {
     std::fprintf(stderr, "flint: clang failed on '%s'\n", ll.c_str());
     return 1;
   }
-  std::printf("built %s (%s)\n", stem.c_str(), opt.c_str());
+  std::printf("built %s (%s)\n", exe.c_str(), opt.c_str());
   return 0;
 }

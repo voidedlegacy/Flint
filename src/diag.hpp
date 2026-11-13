@@ -43,8 +43,9 @@ private:
     std::uint32_t line_end = line_start;
     while (line_end < src_.size() && src_[line_end] != '\n')
       ++line_end;
-    const std::string_view text =
-        src_.substr(line_start, line_end - line_start);
+    
+    std::string_view text = src_.substr(line_start, line_end - line_start);
+    if (!text.empty() && text.back() == '\r') text.remove_suffix(1);  // Windows line ending
 
     std::fprintf(stderr, "%.*s:%u:%u: %s: %.*s\n",
                  static_cast<int>(path_.size()), path_.data(), line, col, label,
