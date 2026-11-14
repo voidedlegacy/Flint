@@ -18,8 +18,25 @@ public:
   Checker(Diagnostics &diag, TypeTable &types) : diag_(diag), types_(types) {}
 
   void run(std::span<FnDecl *> fns) {
+    // Pass 1: every signature, so bodies can rely on them.
     for (FnDecl *fn : fns)
+      check_signature(fn);
+
+    // Pass 2: every body.
+    for (FnDecl *fn : fns) {
+      current_fn_ = fn;
+      push_scope();
+      for (VarStmt *p : fn->params)
+        declare(p); // parameters are `let` variables
       check_stmt(fn->body);
+      pop_scope();
+
+      if (fn->ret_type != types_.void_type() && !always_returns(fn->body)) {
+        diag_.error(fn->body->end_offset,
+                    "function '" + std::string(fn->name) + "' must return a '" +
+                        type_name(fn->ret_type) + "' on every path");
+      }
+    }
   }
 
 private:
@@ -30,12 +47,76 @@ private:
 
   Diagnostics &diag_;
   TypeTable &types_;
-  std::vector<Symbol> symbols_; // every visible name, innermost last
+  FnDecl *current_fn_ = nullptr; // whose body we are checking
+  std::vector<Symbol> symbols_;  // every visible name, innermost last
   std::vector<std::size_t>
       scope_starts_; // index in symbols_ where each scope begins
 
   //   symbols_:      [ a | b | a | x ]
   //   scope_starts_:   ^0      ^2         → inner scope holds "a", "x"
+
+  // ------------------------------------------------------------ functions
+
+  void check_signature(FnDecl *fn) {
+    for (VarStmt *p : fn->params)
+      p->type = resolve_type(p->type_syntax);
+    fn->ret_type =
+        fn->ret_syntax ? resolve_type(fn->ret_syntax) : types_.void_type();
+
+    if (fn->name == "main") {
+      if (!fn->params.empty()) {
+        diag_.error(fn->offset, "'main' must not take parameters");
+      }
+      if (fn->ret_type != types_.void_type() && fn->ret_type != types_.i64()) {
+        diag_.error(fn->ret_syntax->offset,
+                    "'main' must return 'i64' or nothing");
+      }
+    }
+  }
+
+  // Turns written syntax like `&mut i64` into the one shared Type*.
+  Type *resolve_type(const TypeRef *t) {
+    if (t->pointee)
+      return types_.ref(resolve_type(t->pointee), t->is_mut);
+    if (t->name == "i64")
+      return types_.i64();
+    if (t->name == "bool")
+      return types_.boolean();
+    if (t->name == "<error>")
+      return types_.error(); // parser already reported it
+    diag_.error(t->offset, "unknown type '" + std::string(t->name) + "'");
+    return types_.error();
+  }
+
+  // Can control reach the end of `s`? If not, `s` always returns.
+  //   return            → always returns
+  //   { a; b; c }       → if any statement always returns
+  //   if/else           → only if BOTH branches always return
+  //   for { }           → a loop with no exit never falls through
+  static bool always_returns(const Stmt *s) {
+    switch (s->kind) {
+    case StmtKind::Return:
+      return true;
+    case StmtKind::Block:
+      for (const Stmt *child : static_cast<const BlockStmt *>(s)->stmts) {
+        if (always_returns(child))
+          return true;
+      }
+      return false;
+    case StmtKind::If: {
+      const auto *i = static_cast<const IfStmt *>(s);
+      return i->else_stmt && always_returns(i->then_block) &&
+             always_returns(i->else_stmt);
+    }
+    case StmtKind::For: {
+      const auto *f = static_cast<const ForStmt *>(s);
+      return f->cond->kind == ExprKind::Bool &&
+             static_cast<const BoolExpr *>(f->cond)->value;
+    }
+    default:
+      return false;
+    }
+  }
 
   // ------------------------------------------------------------ scopes
 
@@ -78,8 +159,20 @@ private:
     }
     case StmtKind::Return: {
       auto *r = cast<ReturnStmt>(s);
-      if (r->value)
+      Type *want = current_fn_->ret_type;
+      const std::string fname(current_fn_->name);
+      if (!r->value) {
+        if (want != types_.void_type()) {
+          diag_.error(r->offset, "missing return value: '" + fname +
+                                     "' returns '" + type_name(want) + "'");
+        }
+      } else if (want == types_.void_type()) {
         check_expr(r->value);
+        diag_.error(r->value->offset,
+                    "'" + fname + "' does not return a value");
+      } else {
+        expect_type(r->value, check_expr(r->value), want);
+      }
       break;
     }
     case StmtKind::Expr:

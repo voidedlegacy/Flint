@@ -1,0 +1,31 @@
+fn no_value() -> i64 {
+	let x = 1
+}                            // error: can reach the end without returning
+
+fn maybe(a: i64) -> i64 {
+	if a == 1 { return 1 }   // no else: a != 1 falls off the end
+}                            // error
+
+fn both(a: i64) -> i64 {
+	if a == 1 { return 1 } else { return 2 }   // ok: every path returns
+}
+
+fn forever() -> i64 {
+	for { }                  // ok: never reaches the end
+}
+
+fn nothing(flag: bool) {
+	return 5                 // error: nothing() has no return type
+}
+
+fn wrong(r: &mut i64) -> bool {
+	return 1                 // error: expected bool
+}
+
+fn bad_param(x: f32) -> i64 {   // error: there is no f32 (yet)
+	return 0
+}
+
+fn main() -> i64 {
+	return                   // error: main promises an i64
+}

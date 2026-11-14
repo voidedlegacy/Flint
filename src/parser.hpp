@@ -107,19 +107,64 @@ private:
 
   void bump() { tok_ = lex_.next(); }
 
-  // fn name() { ... }
+  // fn name(a: i64, b: &mut i64) -> i64 { ... }
   FnDecl *parse_fn() {
     const Token fn_tok = tok_;
     bump(); // 'fn'
     const Token name = tok_;
     expect(TokenKind::Ident, "expected a function name");
+
     expect(TokenKind::LParen, "expected '('");
+    std::vector<VarStmt *> params;
+    while (tok_.kind != TokenKind::RParen && !at_eof()) {
+      const Token pname = tok_;
+      expect(TokenKind::Ident, "expected a parameter name");
+      expect(TokenKind::Colon,
+             "expected ':' and a type after the parameter name");
+      auto *p =
+          arena_.make<VarStmt>(pname.offset, lex_.text(pname), false, nullptr);
+      p->type_syntax = parse_type();
+      params.push_back(p);
+      if (tok_.kind != TokenKind::Comma)
+        break;
+      bump(); // ','
+    }
     expect(TokenKind::RParen, "expected ')'");
+
+    TypeRef *ret = nullptr; // no `->` means the function returns nothing
+    if (tok_.kind == TokenKind::Arrow) {
+      bump();
+      ret = parse_type();
+    }
+
     BlockStmt *body = parse_block();
     if (tok_.kind == TokenKind::Semicolon)
       bump(); // inserted after '}'
     panicking_ = false;
-    return arena_.make<FnDecl>(fn_tok.offset, lex_.text(name), body);
+    return arena_.make<FnDecl>(fn_tok.offset, lex_.text(name),
+                               arena_.copy_array(params), ret, body);
+  }
+
+  // i64    bool    &T    &mut T
+  TypeRef *parse_type() {
+    const Token t = tok_;
+    if (t.kind == TokenKind::Amp) {
+      bump();
+      bool is_mut = false;
+      if (tok_.kind == TokenKind::KwMut) {
+        is_mut = true;
+        bump();
+      }
+      return arena_.make<TypeRef>(t.offset, std::string_view{}, parse_type(),
+                                  is_mut);
+    }
+    if (t.kind == TokenKind::Ident) {
+      bump();
+      return arena_.make<TypeRef>(t.offset, lex_.text(t), nullptr, false);
+    }
+    error(t, "expected a type");
+    return arena_.make<TypeRef>(t.offset, std::string_view{"<error>"}, nullptr,
+                                false);
   }
 
   // if cond { ... } [else { ... } | else if ...]

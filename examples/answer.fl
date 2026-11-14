@@ -1,6 +1,6 @@
 // The first compiled Flint program!
 // Run, then check the exit code with: echo $?
-fn main() {
+fn main() -> i64 {
 	var x = 6
 	let y = 7
 	x = x * y		// 42

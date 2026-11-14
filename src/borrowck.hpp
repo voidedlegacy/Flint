@@ -17,6 +17,7 @@
 inline bool is_copy(const Type *t) {
   switch (t->kind) {
   case TypeKind::Error:
+  case TypeKind::Void:
   case TypeKind::I64:
   case TypeKind::Bool:
     return true;

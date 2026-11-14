@@ -63,7 +63,7 @@ private:
     case '+':
       return make(TokenKind::Plus);
     case '-':
-      return make(TokenKind::Minus);
+      return make(match('>') ? TokenKind::Arrow : TokenKind::Minus);
     case '*':
       return make(TokenKind::Star);
     case '/':

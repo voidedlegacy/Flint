@@ -50,6 +50,7 @@ enum class TokenKind : std::uint8_t {
   Star,
   Slash, // + - * /
   Amp,   // & (&mut = Amp + KwMut)
+  Arrow,
 };
 
 struct Token {

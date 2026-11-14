@@ -1,0 +1,14 @@
+// Functions can take parameters and declare a return type.
+// (Calling them comes in the next step.)
+fn pick(a: i64, b: i64, first: bool) -> i64 {
+	if first { return a }
+	return b
+}
+
+fn bump(counter: &mut i64) {   // no `->`: returns nothing
+	let unused = counter
+}
+
+fn main() -> i64 {
+	return 42
+}

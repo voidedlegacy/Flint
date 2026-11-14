@@ -3,7 +3,7 @@
 #include <string>
 #include <vector>
 
-enum class TypeKind : std::uint8_t { Error, I64, Bool, Ref };
+enum class TypeKind : std::uint8_t { Error, Void, I64, Bool, Ref };
 
 // Types are interned: each distinct type exists exactly once, so two
 // types are equal if and only if their pointers are equal.
@@ -23,6 +23,7 @@ public:
   Type *error() {
     return &error_;
   } // "already reported", silences follow-up errors
+  Type *void_type() { return &void_; } // "returns nothing"
   Type *i64() { return &i64_; }
   Type *boolean() { return &bool_; }
 
@@ -40,6 +41,7 @@ public:
 private:
   Arena &arena_;
   Type error_{TypeKind::Error};
+  Type void_{TypeKind::Void};
   Type i64_{TypeKind::I64};
   Type bool_{TypeKind::Bool};
   std::vector<Type *> refs_;
@@ -49,6 +51,8 @@ inline std::string type_name(const Type *t) {
   switch (t->kind) {
   case TypeKind::Error:
     return "<error>";
+  case TypeKind::Void:
+    return "void";
   case TypeKind::I64:
     return "i64";
   case TypeKind::Bool:

@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <span>
+#include <string>
 #include <string_view>
 
 // Every expression node starts with this header. The kind tag tells us
@@ -31,6 +32,21 @@ struct BoolExpr : Expr {
 
   BoolExpr(std::uint32_t off, bool v) : Expr{Kind, off}, value(v) {}
 };
+
+// A type written in the source, e.g. `i64` or `&mut bool`.
+// The checker turns it into a real type*.
+struct TypeRef {
+  std::uint32_t offset;
+  std::string_view name; // "i64", "bool", ... (empty for reference)
+  TypeRef *pointee;      // non-null: this is &pointee or &mut
+  bool is_mut;
+};
+
+inline std::string type_ref_text(const TypeRef *t) {
+  if (t->pointee)
+    return (t->is_mut ? "mut " : "&") + type_ref_text(t->pointee);
+  return std::string(t->name);
+}
 
 struct VarStmt; // defined below; IdentExpr points at its declaration
 
@@ -154,8 +170,9 @@ struct VarStmt : Stmt {
   static constexpr StmtKind Kind = StmtKind::Var;
   std::string_view name;
   bool is_mut;
-  Expr *init;
-  Type *type = nullptr; // inferred from init by the checker
+  Expr *init;                     // nullptr for function parameters
+  Type *type = nullptr;           // inferred from init by the checker
+  TypeRef *type_syntax = nullptr; // written type, e.g. a parameter's `: i64`
 
   VarStmt(std::uint32_t off, std::string_view n, bool m, Expr *e)
       : Stmt{Kind, off}, name(n), is_mut(m), init(e) {}
@@ -291,15 +308,27 @@ inline void dump(Stmt *s) {
 
 // --------------------------------------------------------------- declarations
 
-// fn name() { ... }      Parameters and return types come later.
+// fn name(a: i64, b: &mut i64) -> i64 { ... }
 struct FnDecl {
   std::uint32_t offset;
   std::string_view name;
+  std::span<VarStmt *> params; // each has type_syntax set and no init
+  TypeRef *ret_syntax;         // nullptr: the function returns nothing
   BlockStmt *body;
+  Type *ret_type = nullptr; // filled in by the checker
 };
 
 inline void dump(FnDecl *f) {
-  std::printf("(fn %.*s ", static_cast<int>(f->name.size()), f->name.data());
+  std::printf("(fn %.*s (", static_cast<int>(f->name.size()), f->name.data());
+  for (std::size_t i = 0; i < f->params.size(); ++i) {
+    const VarStmt *p = f->params[i];
+    std::printf("%s%.*s: %s", i ? " " : "", static_cast<int>(p->name.size()),
+                p->name.data(), type_ref_text(p->type_syntax).c_str());
+  }
+  std::printf(")");
+  if (f->ret_syntax)
+    std::printf(" -> %s", type_ref_text(f->ret_syntax).c_str());
+  std::printf(" ");
   dump(f->body);
   std::printf(")");
 }
