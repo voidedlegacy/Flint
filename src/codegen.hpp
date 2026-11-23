@@ -320,6 +320,25 @@ private:
       }
       return r;
     }
+    case ExprKind::Call: {
+      auto *c = cast<CallExpr>(e);
+      std::string args;
+      for (Expr *arg : c->args) {
+        const std::string v = emit_expr(arg); // left to right
+        if (!args.empty())
+          args += ", ";
+        args += llvm_type(arg->type) + " " + v;
+      }
+      const std::string callee =
+          "@flint." + std::string(c->name) + "(" + args + ")";
+      if (c->fn->ret_type->kind == TypeKind::Void) {
+        line("call void " + callee);
+        return ""; // no value; the checker makes sure nobody uses it
+      }
+      const std::string r = tmp();
+      line(r + " = call " + llvm_type(c->fn->ret_type) + " " + callee);
+      return r;
+    }
     }
     return "0";
   }

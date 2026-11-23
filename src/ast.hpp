@@ -10,7 +10,7 @@
 
 // Every expression node starts with this header. The kind tag tells us
 // which concrete struct it really is, so we can cast safely.
-enum class ExprKind : std::uint8_t { Int, Bool, Ident, Unary, Binary };
+enum class ExprKind : std::uint8_t { Int, Bool, Ident, Unary, Binary, Call };
 
 struct Expr {
   ExprKind kind;
@@ -44,7 +44,7 @@ struct TypeRef {
 
 inline std::string type_ref_text(const TypeRef *t) {
   if (t->pointee)
-    return (t->is_mut ? "mut " : "&") + type_ref_text(t->pointee);
+    return (t->is_mut ? "&mut " : "&") + type_ref_text(t->pointee);
   return std::string(t->name);
 }
 
@@ -78,8 +78,22 @@ struct BinaryExpr : Expr {
       : Expr{Kind, off}, op(o), lhs(l), rhs(r) {}
 };
 
+struct FnDecl; // defined at the bottom of this file
+
+// name(arg, arg...)
+struct CallExpr : Expr {
+  static constexpr ExprKind Kind = ExprKind::Call;
+  std::string_view name;
+  std::span<Expr *> args; // stored in the arena
+  FnDecl *fn = nullptr;   // filled in by the checker
+
+  CallExpr(std::uint32_t off, std::string_view n, std::span<Expr *> a)
+      : Expr{Kind, off}, name(n), args(a) {}
+};
+
 // Checked downcast: crashes in debug builds if the kind is wrong.
-template <typename T> T *cast(Expr *e) {
+template <typename T>
+T *cast(Expr *e) {
   assert(e->kind == T::Kind);
   return static_cast<T *>(e);
 }
@@ -142,6 +156,16 @@ inline void dump(Expr *e) {
     dump(b->lhs);
     std::printf(" ");
     dump(b->rhs);
+    std::printf(")");
+    break;
+  }
+  case ExprKind::Call: {
+    auto *c = cast<CallExpr>(e);
+    std::printf("(call %.*s", static_cast<int>(c->name.size()), c->name.data());
+    for (Expr *arg : c->args) {
+      std::printf(" ");
+      dump(arg);
+    }
     std::printf(")");
     break;
   }
@@ -286,6 +310,7 @@ inline void dump(Stmt *s) {
   case StmtKind::If: {
     auto *i = cast<IfStmt>(s);
     std::printf("(if ");
+    dump(i->cond);
     std::printf(" ");
     dump(i->then_block);
     if (i->else_stmt) {

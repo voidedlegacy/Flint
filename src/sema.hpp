@@ -6,6 +6,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 // Semantic checker. One walk over each function that:
@@ -31,7 +32,7 @@ public:
       check_stmt(fn->body);
       pop_scope();
 
-      if (fn->ret_type != types_.void_type() && !always_returns(fn->body)) {
+      if (fn->ret_type != types_.void_type() && fn->ret_type != types_.error() && !always_returns(fn->body)) {
         diag_.error(fn->body->end_offset,
                     "function '" + std::string(fn->name) + "' must return a '" +
                         type_name(fn->ret_type) + "' on every path");
@@ -47,6 +48,7 @@ private:
 
   Diagnostics &diag_;
   TypeTable &types_;
+  std::unordered_map<std::string_view, FnDecl *> functions_;
   FnDecl *current_fn_ = nullptr; // whose body we are checking
   std::vector<Symbol> symbols_;  // every visible name, innermost last
   std::vector<std::size_t>
@@ -58,6 +60,12 @@ private:
   // ------------------------------------------------------------ functions
 
   void check_signature(FnDecl *fn) {
+    // Functions can be called before they're defined, so they all go
+    // into one table up front.
+    if (!functions_.try_emplace(fn->name, fn).second) {
+      diag_.error(fn->offset, "function '" + std::string(fn->name) +
+                                  "' is already defined");
+    }
     for (VarStmt *p : fn->params)
       p->type = resolve_type(p->type_syntax);
     fn->ret_type =
@@ -154,25 +162,28 @@ private:
     case StmtKind::Var: {
       auto *v = cast<VarStmt>(s);
       v->type = check_expr(v->init); // before declare: `var x = x` is an error
+      if (v->type == types_.void_type()) {
+        diag_.error(v->init->offset,
+                    "this call returns nothing, so there is no value to store");
+        v->type = types_.error();
+      }
       declare(v);
       break;
     }
     case StmtKind::Return: {
       auto *r = cast<ReturnStmt>(s);
-      Type *want = current_fn_->ret_type;
-      const std::string fname(current_fn_->name);
+      Type *ret = current_fn_->ret_type;
       if (!r->value) {
-        if (want != types_.void_type()) {
-          diag_.error(r->offset, "missing return value: '" + fname +
-                                     "' returns '" + type_name(want) + "'");
-        }
-      } else if (want == types_.void_type()) {
-        check_expr(r->value);
-        diag_.error(r->value->offset,
-                    "'" + fname + "' does not return a value");
-      } else {
-        expect_type(r->value, check_expr(r->value), want);
+        if (ret != types_.void_type() && ret != types_.error())
+          diag_.error(r->offset, "missing return value");
+        break;
       }
+      Type *got = check_expr(r->value);
+      if (ret == types_.void_type()) {
+        diag_.error(r->value->offset, "'" + std::string(current_fn_->name) + "' does not return a value");
+        break;
+      }
+      expect_type(r->value, got, ret);
       break;
     }
     case StmtKind::Expr:
@@ -281,8 +292,38 @@ private:
       const bool ok_r = expect_type(b->rhs, rhs, types_.i64());
       return ok_l && ok_r ? types_.i64() : types_.error();
     }
+    case ExprKind::Call:
+      return check_call(cast<CallExpr>(e));
     }
     return types_.error();
+  }
+
+  // name(args): the function must exist, and each argument must match
+  // its parameter's type. The call's type is the function's return type.
+  Type *check_call(CallExpr *c) {
+    const auto it = functions_.find(c->name);
+    if (it == functions_.end()) {
+      diag_.error(c->offset,
+                  "undeclared function '" + std::string(c->name) + "'");
+      for (Expr *arg : c->args)
+        check_expr(arg);
+      return types_.error();
+    }
+    c->fn = it->second;
+    const auto &params = c->fn->params;
+
+    if (c->args.size() != params.size()) {
+      diag_.error(c->offset, "'" + std::string(c->name) + "' takes " +
+                                 std::to_string(params.size()) +
+                                 " argument(s), but got " +
+                                 std::to_string(c->args.size()));
+    }
+    for (std::size_t i = 0; i < c->args.size(); ++i) {
+      Type *got = check_expr(c->args[i]);
+      if (i < params.size())
+        expect_type(c->args[i], got, params[i]->type);
+    }
+    return c->fn->ret_type;
   }
 
   // Reports a mismatch unless `actual` is `expected`. Error types never

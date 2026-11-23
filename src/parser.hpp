@@ -266,6 +266,8 @@ private:
       return arena_.make<BoolExpr>(t.offset, t.kind == TokenKind::KwTrue);
     case TokenKind::Ident:
       bump();
+      if (tok_.kind == TokenKind::LParen)
+        return parse_call(t);
       return arena_.make<IdentExpr>(t.offset, lex_.text(t));
     case TokenKind::LParen: {
       bump();
@@ -280,6 +282,21 @@ private:
       bump(); // skip the bad token so we always make progress
       return arena_.make<IntExpr>(t.offset, 0u); // placeholder, never null
     }
+  }
+
+  // name (arg, arg...) The name token is already consumed; tok_ is '('.
+  Expr *parse_call(Token name) {
+    bump(); // '('
+    std::vector<Expr *> args;
+    while (tok_.kind != TokenKind::RParen && !at_eof()) {
+      args.push_back(parse_expr());
+      if (tok_.kind != TokenKind::Comma)
+        break;
+      bump(); // ','
+    }
+    expect(TokenKind::RParen, "expected ')' after the arguments");
+    return arena_.make<CallExpr>(name.offset, lex_.text(name),
+                                 arena_.copy_array(args));
   }
 
   void expect(TokenKind kind, const char *what) {

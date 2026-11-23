@@ -180,6 +180,10 @@ private:
       record_last_uses(b->rhs);
       break;
     }
+    case ExprKind::Call:
+      for (Expr *arg : cast<CallExpr>(e)->args)
+        record_last_uses(arg);
+      break;
     }
   }
 
@@ -194,8 +198,17 @@ private:
     }
     case StmtKind::Return: {
       auto *r = cast<ReturnStmt>(s);
-      if (r->value)
-        eval(r->value);
+      if (!r->value)
+        break;
+      for (LoanId lid : eval(r->value)) {
+        const std::string name(loans_[lid].place->name);
+        error(r->value->offset,
+              "cannot return a reference to local variable '" + name + "'");
+        note(loans_[lid].offset, "'" + name +
+                                     "' is borrowed here, and it stops "
+                                     "existing when the function returns");
+        break;
+      }
       break;
     }
     case StmtKind::Expr:
@@ -346,8 +359,86 @@ private:
       read_only(b->rhs);
       return {}; // results are i64 or bool: no loans inside
     }
+    case ExprKind::Call:
+      return eval_call(cast<CallExpr>(e));
     }
     return {};
+  }
+
+  // f(args)
+  //
+  // Flint has no lifetime annotations, so we assume the worst: if f
+  // returns a reference, it might point at anything its arguments
+  // point at. The result therefore carries every argument's loans.
+  //
+  //   let r = first(&a, &b)    r holds loans on a AND b
+  //   b = 3                    ✗ r might point at b
+  //
+  // If f returns no reference, nothing it was given can escape. A &mut
+  // variable passed in is only *lent* for the call (Rust calls this a
+  // reborrow), so it stays usable afterwards instead of being moved.
+  std::vector<LoanId> eval_call(CallExpr *c) {
+    const bool returns_ref = c->fn->ret_type->kind == TypeKind::Ref;
+    std::vector<std::vector<LoanId>> arg_loans; // what each argument points at
+    std::vector<const VarStmt *> lent; // &mut variables lent to this call
+    std::vector<bool> reported(c->args.size(), false);
+
+    for (Expr *arg : c->args) {
+      const bool lent_mut_ref = !returns_ref && arg->kind == ExprKind::Ident &&
+                                arg->type->kind == TypeKind::Ref &&
+                                arg->type->is_mut;
+      if (lent_mut_ref) {
+        auto *id = cast<IdentExpr>(arg);
+        read_only(arg); // checked like a read, but not moved
+        if (std::find(lent.begin(), lent.end(), id->decl) != lent.end()) {
+          error(id->offset,
+                "cannot pass '" + std::string(id->name) +
+                    "' twice in one call: a &mut must be the only way in");
+          reported[arg_loans.size()] = true;
+        }
+        lent.push_back(id->decl);
+        arg_loans.push_back(state_.holds[id->decl]);
+      } else {
+        arg_loans.push_back(eval(arg));
+      }
+    }
+
+    // Inside the callee, all arguments are alive at the same time. So two
+    // of them must not point at the same variable if either one is &mut.
+    //   f(&mut a, &a)    ✗ the callee would see a through both
+    auto clash = [&](std::size_t i, std::size_t j) -> const Loan * {
+      for (LoanId x : arg_loans[i]) {
+        for (LoanId y : arg_loans[j]) {
+          const Loan &lx = loans_[x];
+          const Loan &ly = loans_[y];
+          if (lx.place == ly.place && (lx.is_mut || ly.is_mut))
+            return &lx;
+        }
+      }
+      return nullptr;
+    };
+    for (std::size_t j = 1; j < arg_loans.size(); ++j) {
+      if (reported[j])
+        continue;
+      for (std::size_t i = 0; i < j; ++i) {
+        if (const Loan *loan = clash(i, j)) {
+          const std::string name(loan->place->name);
+          error(c->args[j]->offset,
+                "cannot pass two references to '" + name +
+                    "' into one call when one of them is &mut");
+          note(c->args[i]->offset,
+               "the other reference to '" + name + "' is passed here");
+          break; // one report per argument is enough
+        }
+      }
+    }
+
+    std::vector<LoanId> result;
+    if (returns_ref) {
+      for (const auto &loans : arg_loans)
+        result.insert(result.end(), loans.begin(), loans.end());
+    }
+    return result;
   }
 
   // Operands of operators are read, never moved.
