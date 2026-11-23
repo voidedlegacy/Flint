@@ -154,9 +154,13 @@ pub const CodeGen = struct {
                 try self.line("store {s} {s}, ptr {s}", .{ llvmType(v.type), value, slot });
             },
             .assign => |as| {
-                const target = as.target.data.ident; // the checker guarantees an ident
                 const value = try self.emitExpr(as.value);
-                try self.line("store {s} {s}, ptr {s}", .{ llvmType(as.target.type), value, self.slots.get(target.decl.?).? });
+                // The checker guarantees a variable or *p.
+                const ptr = switch (as.target.data) {
+                    .ident => |id| self.slots.get(id.decl.?).?, // x = e: x's slot
+                    else => try self.emitExpr(as.target.data.unary.operand), // *p = e: p's value
+                };
+                try self.line("store {s} {s}, ptr {s}", .{ llvmType(as.target.type), value, ptr });
             },
             .ret => |value| {
                 if (value) |e| {
@@ -244,9 +248,21 @@ pub const CodeGen = struct {
                 return r;
             },
             .unary => |u| {
+                if (u.op == .star) {
+                    // *p: load through the pointer p holds.
+                    const p = try self.emitExpr(u.operand);
+                    const r = try self.tmp();
+                    try self.line("{s} = load {s}, ptr {s}", .{ r, llvmType(e.type), p });
+                    return r;
+                }
                 if (u.op == .amp) {
                     // &x is simply the address of x's stack slot.
                     if (u.operand.data == .ident) return self.slots.get(u.operand.data.ident.decl.?).?;
+                    // &*p is p itself: same address, no copy.
+                    switch (u.operand.data) {
+                        .unary => |inner| if (inner.op == .star) return self.emitExpr(inner.operand),
+                        else => {},
+                    }
                     // &(temporary): give the value a slot of its own.
                     const v = try self.emitExpr(u.operand);
                     const slot = try std.fmt.allocPrint(self.arena, "%ref{d}", .{self.next_tmp});

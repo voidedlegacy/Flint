@@ -1,0 +1,9 @@
+deref_types.fl:3:10: error: cannot dereference a value of type 'i64'
+    	let n = *x              // error: x is not a reference
+    	        ^
+deref_types.fl:5:2: error: cannot assign through a shared reference '&i64' (use '&mut' to write through it)
+    	*r = 2                  // error: r is a shared reference
+    	^
+deref_types.fl:6:10: error: cannot borrow as mutable through a shared reference '&i64'
+    	let m = &mut *r         // error: &mut through a shared reference
+    	        ^

@@ -1,0 +1,7 @@
+fn main() {
+	var x = 1
+	let n = *x              // error: x is not a reference
+	let r = &x
+	*r = 2                  // error: r is a shared reference
+	let m = &mut *r         // error: &mut through a shared reference
+}

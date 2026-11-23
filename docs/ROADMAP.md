@@ -6,7 +6,7 @@ an update to the test runner's expected results, and a commit.
 
 ## Language
 
-- [ ] 29. Dereference: `*r` reads through `&T`/`&mut T`; `*r = e` writes, and only through `&mut T`.
+- [x] 29. Dereference: `*r` reads through `&T`/`&mut T`; `*r = e` writes, and only through `&mut T`.
       Borrowck: writing through r counts as a use of r's loans. Codegen: load/store through the ptr.
       Test: `fn bump(c: &mut i64) { *c = *c + 1 }` changes the caller's variable.
 - [ ] 30. `break` and `continue`. Replace the borrow checker's "later in the source" rule with a real

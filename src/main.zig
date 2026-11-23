@@ -24,11 +24,13 @@ pub fn main(init: std.process.Init) !u8 {
     const io = init.io;
     const args = try init.minimal.args.toSlice(init.arena.allocator());
 
+    // Streaming, not positional: positional writes start at offset 0, so
+    // `flint f.fl > log` or `2>&1` would overwrite earlier output.
     var stdout_buf: [4096]u8 = undefined;
-    var stdout_fw: Io.File.Writer = .init(.stdout(), io, &stdout_buf);
+    var stdout_fw: Io.File.Writer = .initStreaming(.stdout(), io, &stdout_buf);
     const stdout = &stdout_fw.interface;
     var stderr_buf: [4096]u8 = undefined;
-    var stderr_fw: Io.File.Writer = .init(.stderr(), io, &stderr_buf);
+    var stderr_fw: Io.File.Writer = .initStreaming(.stderr(), io, &stderr_buf);
     const stderr = &stderr_fw.interface;
 
     const code = try compile(gpa, io, args, stdout, stderr);

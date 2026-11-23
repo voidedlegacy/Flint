@@ -33,7 +33,7 @@ pub const Expr = struct {
     };
 
     pub const Unary = struct {
-        op: TokenKind, // .minus or .amp
+        op: TokenKind, // .minus, .amp (& / &mut) or .star (deref)
         is_mut: bool, // true for &mut
         operand: *Expr,
     };

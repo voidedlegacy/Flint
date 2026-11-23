@@ -124,7 +124,11 @@ pub const BorrowChecker = struct {
         switch (s.data) {
             .var_decl => |*v| try self.recordLastUses(v.init.?),
             .expr => |e| try self.recordLastUses(e),
-            .assign => |as| try self.recordLastUses(as.value),
+            .assign => |as| {
+                try self.recordLastUses(as.value);
+                // `*r = e` writes through r, so it counts as a use of r.
+                if (derefPointer(as.target)) |ptr| try self.recordLastUses(ptr);
+            },
             .ret => |value| if (value) |e| try self.recordLastUses(e),
             .if_ => |i| {
                 try self.recordLastUses(i.cond);
@@ -197,6 +201,17 @@ pub const BorrowChecker = struct {
                         try self.checkConflicts(as.target, true, "assign to", "");
                         _ = self.state.moved.swapRemove(id.decl.?); // fresh value: usable again
                         try self.setHolds(id.decl.?, loans); // old loans are dropped
+                    },
+                    .unary => |u| if (u.op == .star) {
+                        // *r = e: e's loans flow into whatever r points at. r may
+                        // point at several places, so add to each (never replace).
+                        //
+                        //   r --loan--> x        *r = &y   =>  x now also holds &y
+                        const targets = try self.pointerLoans(u.operand, true, "assign through");
+                        for (targets) |lid| {
+                            const place = self.loans.items[lid].place;
+                            try self.setHolds(place, try self.unionLoans(try self.holdsOf(place), loans));
+                        }
                     },
                     else => {},
                 }
@@ -320,6 +335,7 @@ pub const BorrowChecker = struct {
             },
             .unary => |u| {
                 if (u.op == .amp) return self.borrow(e, u);
+                if (u.op == .star) return self.deref(e, u);
                 _ = try self.eval(u.operand);
                 return &.{};
             },
@@ -412,6 +428,10 @@ pub const BorrowChecker = struct {
 
     /// &x or &mut x: creates a new loan on x.
     fn borrow(self: *BorrowChecker, e: *Expr, u: Expr.Unary) Error!Loans {
+        if (derefPointer(u.operand)) |ptr| {
+            // &*r and &mut *r point where r points: no new loan, same places.
+            return self.pointerLoans(ptr, u.is_mut, "reborrow");
+        }
         if (u.operand.data != .ident) {
             _ = try self.eval(u.operand); // borrowing a temporary like &(1 + 2)
             return &.{};
@@ -437,6 +457,39 @@ pub const BorrowChecker = struct {
         try self.loans.append(self.a(), .{ .place = decl, .is_mut = u.is_mut, .offset = e.offset });
         one[0] = @intCast(self.loans.items.len - 1);
         return one;
+    }
+
+    /// *r: reads the value r points at. The result carries the loans held
+    /// by the places r points at (r --loan--> x, result = holds[x]).
+    fn deref(self: *BorrowChecker, e: *Expr, u: Expr.Unary) Error!Loans {
+        const targets = try self.pointerLoans(u.operand, false, "use");
+        if (!isCopy(e.type)) {
+            // A &mut behind a reference can't be copied, and taking it out
+            // would leave the place it came from without a value.
+            self.err(e.offset, "cannot move a '{f}' out from behind a reference", .{e.type});
+        }
+        var result: Loans = &.{};
+        for (targets) |lid| result = try self.unionLoans(result, try self.holdsOf(self.loans.items[lid].place));
+        return result;
+    }
+
+    /// Evaluates the pointer in *p or &*p and returns its loans (the places
+    /// it points at). A variable is used, not moved: going through a &mut
+    /// doesn't use it up. want_mut: writing through it needs no live loan on p.
+    fn pointerLoans(self: *BorrowChecker, p: *Expr, want_mut: bool, verb: []const u8) Error!Loans {
+        if (p.data != .ident) return self.eval(p);
+        self.requireNotMoved(p, "use");
+        try self.checkConflicts(p, want_mut, verb, "");
+        return self.holdsOf(p.data.ident.decl.?);
+    }
+
+    fn unionLoans(self: *BorrowChecker, xs: Loans, ys: Loans) Error!Loans {
+        var out: std.ArrayList(LoanId) = .empty;
+        try out.appendSlice(self.a(), xs);
+        for (ys) |lid| {
+            if (std.mem.indexOfScalar(LoanId, out.items, lid) == null) try out.append(self.a(), lid);
+        }
+        return out.items;
     }
 
     // ------------------------------------------------------------ the rules
@@ -478,3 +531,11 @@ pub const BorrowChecker = struct {
         }
     }
 };
+
+/// For `*p`, returns p. Otherwise null.
+fn derefPointer(e: *Expr) ?*Expr {
+    return switch (e.data) {
+        .unary => |u| if (u.op == .star) u.operand else null,
+        else => null,
+    };
+}

@@ -1,0 +1,18 @@
+// *r reads through a reference. *r = e writes, and only through &mut.
+fn bump(c: &mut i64) {
+	*c = *c + 1             // changes the caller's variable
+}
+
+fn get(r: &i64) -> i64 {
+	return *r
+}
+
+fn main() -> i64 {
+	var x = 40
+	bump(&mut x)            // x is 41
+	let m = &mut x
+	*m = *m + 1             // x is 42, written through m
+	let r = &x
+	let rr = &r             // a reference to a reference
+	return get(*rr)         // *rr is r, so this reads x: 42
+}

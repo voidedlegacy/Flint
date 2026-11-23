@@ -180,8 +180,14 @@ pub const Checker = struct {
         }
     }
 
-    /// You may only assign to a variable, and only if it is a `var`.
+    /// You may assign to a `var`, or write through a `&mut` with `*r = e`.
     fn checkAssignTarget(self: *Checker, target: *Expr) void {
+        if (derefPointer(target)) |ptr| {
+            if (ptr.type.isRef() and !ptr.type.isMutRef()) {
+                self.diag.err(target.offset, "cannot assign through a shared reference '{f}' (use '&mut' to write through it)", .{ptr.type});
+            }
+            return; // a non-reference was already reported by the deref itself
+        }
         switch (target.data) {
             .ident => |id| if (id.decl) |d| {
                 if (!d.is_mut) {
@@ -190,6 +196,14 @@ pub const Checker = struct {
             },
             else => self.diag.err(target.offset, "can only assign to a variable", .{}),
         }
+    }
+
+    /// For `*p`, returns p. Otherwise null.
+    fn derefPointer(e: *Expr) ?*Expr {
+        return switch (e.data) {
+            .unary => |u| if (u.op == .star) u.operand else null,
+            else => null,
+        };
     }
 
     // ------------------------------------------------------------ expressions
@@ -215,7 +229,28 @@ pub const Checker = struct {
             },
             .unary => |u| {
                 const operand = try self.checkExpr(u.operand);
-                if (u.op == .amp) return tt.ref(operand, u.is_mut);
+                if (u.op == .amp) {
+                    // &mut *r would let you write through r, so r must be &mut.
+                    if (u.is_mut) {
+                        if (derefPointer(u.operand)) |ptr| {
+                            if (ptr.type.isRef() and !ptr.type.isMutRef()) {
+                                self.diag.err(e.offset, "cannot borrow as mutable through a shared reference '{f}'", .{ptr.type});
+                            }
+                        }
+                    }
+                    return tt.ref(operand, u.is_mut);
+                }
+                if (u.op == .star) {
+                    // *r gives the value r points at.
+                    return switch (operand.*) {
+                        .ref => |r| r.pointee,
+                        .err => tt.err(),
+                        else => blk: {
+                            self.diag.err(e.offset, "cannot dereference a value of type '{f}'", .{operand});
+                            break :blk tt.err();
+                        },
+                    };
+                }
                 // unary minus
                 if (!self.expectType(u.operand, operand, tt.int())) return tt.err();
                 return tt.int();

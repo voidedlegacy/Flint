@@ -266,6 +266,12 @@ pub const Parser = struct {
             const operand = try self.parseUnary();
             return self.newExpr(t.offset, .{ .unary = .{ .op = .minus, .is_mut = false, .operand = operand } });
         }
+        if (t.kind == .star) {
+            // *r: read (or, as an assignment target, write) through a reference.
+            self.bump();
+            const operand = try self.parseUnary();
+            return self.newExpr(t.offset, .{ .unary = .{ .op = .star, .is_mut = false, .operand = operand } });
+        }
         if (t.kind == .amp) {
             self.bump();
             var is_mut = false;
@@ -377,4 +383,5 @@ test "precedence and associativity" {
     try expectDump("a + 1 < b == true", "(== (< (+ a 1) b) true)");
     try expectDump("&mut x", "(&mut x)");
     try expectDump("f(1, g(x), &y)", "(call f 1 (call g x) (& y))");
+    try expectDump("*c * **d", "(* (* c) (* (* d)))");
 }

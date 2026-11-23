@@ -1,0 +1,14 @@
+fn main() {
+	var y = 5
+	let m = &mut y
+	y = 6                   // error: m writes to y below
+	*m = 7
+	let mm = &m
+	let stolen = *mm        // error: a &mut can't be copied out of a reference
+}
+
+fn dangle() -> &i64 {
+	let x = 1
+	let r = &x
+	return &*r              // error: &*r still points at x
+}
