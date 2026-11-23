@@ -1,0 +1,19 @@
+// Functions can be called before they're defined: no headers needed.
+fn main() -> i64 {
+	return add(fib(9), max(4, 2) * 2)   // 34 + 8 = 42
+}
+
+fn add(a: i64, b: i64) -> i64 {
+	return a + b
+}
+
+fn max(a: i64, b: i64) -> i64 {
+	if a > b { return a }
+	return b
+}
+
+// Recursion works too: 0 1 1 2 3 5 8 13 21 34
+fn fib(n: i64) -> i64 {
+	if n < 2 { return n }
+	return fib(n - 1) + fib(n - 2)
+}

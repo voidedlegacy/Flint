@@ -1,0 +1,9 @@
+scopes.fl:6:14: error: undeclared name 'c'
+    		return a + c  // c was never declared
+    		           ^
+scopes.fl:8:2: error: 'b' is already declared in this scope
+    	let b = 3       // b already exists in this scope
+    	^
+scopes.fl:9:10: error: undeclared name 'd'
+    	var d = d       // d is not declared yet on the right side
+    	        ^

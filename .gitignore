@@ -8,3 +8,7 @@ cmake-build-*/
 # Compiler output from examples (keep only the .fl sources)
 examples/*
 !examples/*.fl
+
+# Zig build output
+.zig-cache/
+zig-out/

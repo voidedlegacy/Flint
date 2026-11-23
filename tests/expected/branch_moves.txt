@@ -1,0 +1,6 @@
+branch_moves.fl:9:14: error: use of moved value 'm'
+    	let again = m        // error: m might have been moved above
+    	            ^
+branch_moves.fl:7:11: note: 'm' was moved here
+    		let k = m        // m moves, but only on this path
+    		        ^

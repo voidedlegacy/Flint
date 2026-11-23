@@ -25,8 +25,17 @@ Early development. The first milestone 	is token design and a lexer.
 
 * Implementation
 
-- C++20 or newer.
-- Backend to be decided.
+- Zig 0.17 (=src/*.zig=), ported from the C++20 reference (=src/*.hpp=).
+- Backend: textual LLVM IR, compiled with =clang=.
+
+#+begin_src sh
+zig build                         # zig-out/bin/flint
+zig build run -- examples/calls.fl
+zig build test                    # unit tests + every examples/*.fl
+#+end_src
+
+=tests/expected/*.txt= holds the exact error output of the C++ version;
+the example runner checks the Zig compiler against it byte for byte.
 
 * License
 

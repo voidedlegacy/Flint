@@ -1,0 +1,21 @@
+moves.fl:9:11: error: cannot use 'a' while it is mutably borrowed
+    	let m2 = a  	// &mut is not Copy: a moves into m2
+    	         ^
+moves.fl:8:10: note: 'a' was mutably borrowed here
+    	let m = &mut a
+    	        ^
+moves.fl:18:11: note: the borrow is still used here
+    	let t = &m    // error: can't borrow m either, it was moved
+    	         ^
+moves.fl:18:11: error: borrow of moved value 'm'
+    	let t = &m    // error: can't borrow m either, it was moved
+    	         ^
+moves.fl:10:11: note: 'm' was moved here
+    	let m3 = m  	// error: m was moved
+    	         ^
+moves.fl:19:10: error: use of moved value 'r'
+    	let u = r     // error: r moved into r3
+    	        ^
+moves.fl:15:11: note: 'r' was moved here
+    	let r3 = r    // ok
+    	         ^

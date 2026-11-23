@@ -1,0 +1,9 @@
+mutability.fl:5:2: error: cannot assign to 'limit': it was declared with 'let' (use 'var' to make it mutable)
+    	limit = 20        // error: limit is a let
+    	^
+mutability.fl:6:2: error: can only assign to a variable
+    	1 + 2 = count     // error: not a variable
+    	^
+mutability.fl:7:2: error: undeclared name 'missing'
+    	missing = 5       // error: never declared
+    	^

@@ -1,0 +1,15 @@
+call_errors.fl:16:1: error: function 'add' is already defined
+    fn add(x: i64) -> i64 {     // error: add already exists
+    ^
+call_errors.fl:9:10: error: 'add' takes 2 argument(s), but got 1
+    	let a = add(1)          // error: needs 2 arguments
+    	        ^
+call_errors.fl:10:17: error: expected 'i64', found 'bool'
+    	let b = add(1, true)    // error: second argument must be i64
+    	               ^
+call_errors.fl:11:10: error: this call returns nothing, so there is no value to store
+    	let c = log(5)          // error: log returns nothing
+    	        ^
+call_errors.fl:12:10: error: undeclared function 'nope'
+    	let d = nope(1)         // error: no such function
+    	        ^

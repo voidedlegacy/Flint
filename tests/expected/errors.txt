@@ -1,0 +1,9 @@
+errors.fl:2:6: error: expected a variable name
+    	var = 1
+    	    ^
+errors.fl:3:17: error: expected ')'
+    	let ok = (2 + 3
+    	               ^
+errors.fl:6:1: error: expected 'fn'
+    let stray = 5
+    ^

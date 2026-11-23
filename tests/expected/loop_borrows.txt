@@ -1,0 +1,15 @@
+loop_borrows.fl:6:11: error: use of moved value 'm'
+    		let k = m        // error: the first trip moves m, the second can't
+    		        ^
+loop_borrows.fl:6:11: note: 'm' was moved here, in the previous iteration of the loop
+    		let k = m        // error: the first trip moves m, the second can't
+    		        ^
+loop_borrows.fl:14:3: error: cannot assign to 'b' while it is borrowed
+    		b = b + 1        // error: ...so b is still borrowed here
+    		^
+loop_borrows.fl:11:10: note: 'b' was borrowed here
+    	let r = &b
+    	        ^
+loop_borrows.fl:16:2: note: the borrow is still used here
+    	}
+    	^

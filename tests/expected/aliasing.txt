@@ -1,0 +1,39 @@
+aliasing.fl:7:15: error: cannot borrow 'a' as mutable while it is borrowed
+    	let m = &mut a	// error: a is borrowed by r1, still used below
+    	             ^
+aliasing.fl:5:11: note: 'a' was borrowed here
+    	let r1 = &a
+    	         ^
+aliasing.fl:8:13: note: the borrow is still used here
+    	let use1 = r1
+    	           ^
+aliasing.fl:11:13: error: cannot use 'b' while it is mutably borrowed
+    	let peek = b    // error: b is mutably borrowed, w still used below
+    	           ^
+aliasing.fl:10:10: note: 'b' was mutably borrowed here
+    	let w = &mut b
+    	        ^
+aliasing.fl:13:13: note: the borrow is still used here
+    	let keep = w    // last use of w: the borrow ends here
+    	           ^
+aliasing.fl:12:2: error: cannot assign to 'b' while it is mutably borrowed
+    	b = 5           // error: same reason
+    	^
+aliasing.fl:10:10: note: 'b' was mutably borrowed here
+    	let w = &mut b
+    	        ^
+aliasing.fl:13:13: note: the borrow is still used here
+    	let keep = w    // last use of w: the borrow ends here
+    	           ^
+aliasing.fl:17:16: error: cannot borrow 'b' as mutable while it is mutably borrowed
+    	let w3 = &mut b // error: w2 is still used below
+    	              ^
+aliasing.fl:16:11: note: 'b' was mutably borrowed here
+    	let w2 = &mut b 
+    	         ^
+aliasing.fl:18:13: note: the borrow is still used here
+    	let use2 = w2
+    	           ^
+aliasing.fl:21:17: error: cannot borrow 'c' as mutable: it was declared with 'let'
+    	let bad = &mut c // error: c is a let
+    	               ^

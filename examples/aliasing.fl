@@ -5,6 +5,7 @@ fn main() {
 	let r1 = &a
 	let r2 = &a		// ok: any number of shared borrows
 	let m = &mut a	// error: a is borrowed by r1, still used below
+	let use1 = r1
 
 	let w = &mut b
 	let peek = b    // error: b is mutably borrowed, w still used below

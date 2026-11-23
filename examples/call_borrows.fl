@@ -1,0 +1,42 @@
+// Returns one of its arguments, so the result points wherever they point.
+fn first(a: &i64, b: &i64) -> &i64 {
+	return a
+}
+
+// Takes a &mut but returns no reference: m is only lent, not given away.
+fn peek(r: &mut i64) -> i64 {
+	return 0
+}
+
+fn dangle() -> &i64 {
+	let x = 5
+	return &x               // error: x stops existing when dangle returns
+}
+
+fn main() -> i64 {
+	var a = 1
+	var b = 2
+
+	let m = &mut a
+	let n1 = peek(m)        // ok: m is lent to peek...
+	let n2 = peek(m)        // ...so it can be used again
+
+	let r = first(&a, &b)   // r might point at a or b
+	b = 3                   // error: b is borrowed through r
+	let keep = r
+	return 0
+}
+
+fn both(x: &mut i64, y: &i64) {
+}
+
+fn swap_in(x: &mut i64, y: &mut i64) {
+}
+
+fn aliasing(p: &mut i64) {
+	var c = 1
+	both(&mut c, &c)        // error: c reached through &mut and & at once
+	let w = &mut c
+	swap_in(w, w)           // error: the same &mut passed twice
+	swap_in(p, p)           // error: same for a &mut parameter
+}

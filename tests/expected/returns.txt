@@ -1,0 +1,18 @@
+returns.fl:25:17: error: unknown type 'f32'
+    fn bad_param(x: f32) -> i64 {   // error: there is no f32 (yet)
+                    ^
+returns.fl:3:1: error: function 'no_value' must return a 'i64' on every path
+    }                            // error: can reach the end without returning
+    ^
+returns.fl:7:1: error: function 'maybe' must return a 'i64' on every path
+    }                            // error
+    ^
+returns.fl:18:9: error: 'nothing' does not return a value
+    	return 5                 // error: nothing() has no return type
+    	       ^
+returns.fl:22:9: error: expected 'bool', found 'i64'
+    	return 1                 // error: expected bool
+    	       ^
+returns.fl:30:2: error: missing return value
+    	return                   // error: main promises an i64
+    	^

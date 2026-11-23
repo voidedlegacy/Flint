@@ -1,0 +1,27 @@
+call_borrows.fl:13:9: error: cannot return a reference to local variable 'x'
+    	return &x               // error: x stops existing when dangle returns
+    	       ^
+call_borrows.fl:13:9: note: 'x' is borrowed here, and it stops existing when the function returns
+    	return &x               // error: x stops existing when dangle returns
+    	       ^
+call_borrows.fl:25:2: error: cannot assign to 'b' while it is borrowed
+    	b = 3                   // error: b is borrowed through r
+    	^
+call_borrows.fl:24:20: note: 'b' was borrowed here
+    	let r = first(&a, &b)   // r might point at a or b
+    	                  ^
+call_borrows.fl:26:13: note: the borrow is still used here
+    	let keep = r
+    	           ^
+call_borrows.fl:38:15: error: cannot pass two references to 'c' into one call when one of them is &mut
+    	both(&mut c, &c)        // error: c reached through &mut and & at once
+    	             ^
+call_borrows.fl:38:7: note: the other reference to 'c' is passed here
+    	both(&mut c, &c)        // error: c reached through &mut and & at once
+    	     ^
+call_borrows.fl:40:13: error: cannot pass 'w' twice in one call: a &mut must be the only way in
+    	swap_in(w, w)           // error: the same &mut passed twice
+    	           ^
+call_borrows.fl:41:13: error: cannot pass 'p' twice in one call: a &mut must be the only way in
+    	swap_in(p, p)           // error: same for a &mut parameter
+    	           ^
