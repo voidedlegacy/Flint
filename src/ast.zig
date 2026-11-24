@@ -8,7 +8,7 @@
 //!   +--------+------+------+     +--------+--------------------+
 //!                     |                     var_decl | ret | expr
 //!     int | bool | ident | unary            block | assign | if_ | for_
-//!     binary | call
+//!     binary | call                         break_ | continue_
 const std = @import("std");
 const TokenKind = @import("token.zig").TokenKind;
 const Type = @import("types.zig").Type;
@@ -83,6 +83,8 @@ pub const Stmt = struct {
         assign: Assign,
         if_: If,
         for_: For,
+        break_, // leaves the innermost loop
+        continue_, // jumps to the innermost loop's condition
     };
 
     pub const Block = struct {
@@ -197,6 +199,8 @@ pub fn dumpStmt(w: *std.Io.Writer, s: *const Stmt) std.Io.Writer.Error!void {
             try w.writeAll(")");
         },
         .expr => |e| try dumpExpr(w, e),
+        .break_ => try w.writeAll("(break)"),
+        .continue_ => try w.writeAll("(continue)"),
         .assign => |a| {
             try w.writeAll("(= ");
             try dumpExpr(w, a.target);

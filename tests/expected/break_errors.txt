@@ -1,0 +1,9 @@
+break_errors.fl:2:2: error: 'break' outside of a loop
+    	break               // error: not inside a loop
+    	^
+break_errors.fl:9:2: error: 'continue' outside of a loop
+    	continue            // error: not inside a loop
+    	^
+break_errors.fl:16:1: error: function 'forever' must return a 'i64' on every path
+    }                   // error: the break means we can get here
+    ^

@@ -7,7 +7,8 @@
 //!      program and check its exit code
 //!   4. if tests/expected/<name>.txt exists, flint's stderr must match it
 //!      byte for byte (messages, line:col, source lines and carets).
-//!      Files for examples that predate the Zig port came from the C++ version.
+//!      Files for examples that predate the Zig port came from the C++ version;
+//!      since step 30 their notes point at the next read, not the last one.
 const std = @import("std");
 const builtin = @import("builtin");
 const Io = std.Io;
@@ -39,6 +40,10 @@ const expectations = std.StaticStringMap(Expect).initComptime(.{
     .{ "deref", Expect{ .runs = 42 } },
     .{ "deref_types", Expect{ .errors = 3 } },
     .{ "deref_borrows", Expect{ .errors = 3 } },
+    .{ "break_continue", Expect{ .runs = 42 } },
+    .{ "flow", Expect{ .runs = 42 } },
+    .{ "break_errors", Expect{ .errors = 3 } },
+    .{ "break_borrows", Expect{ .errors = 2 } },
 });
 
 pub fn main(init: std.process.Init) !u8 {

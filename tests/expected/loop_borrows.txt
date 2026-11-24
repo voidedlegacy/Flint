@@ -10,6 +10,6 @@ loop_borrows.fl:14:3: error: cannot assign to 'b' while it is borrowed
 loop_borrows.fl:11:10: note: 'b' was borrowed here
     	let r = &b
     	        ^
-loop_borrows.fl:16:2: note: the borrow is still used here
-    	}
-    	^
+loop_borrows.fl:13:14: note: the borrow is still used here
+    		let peek = r     // r is read again at the top of every trip...
+    		           ^

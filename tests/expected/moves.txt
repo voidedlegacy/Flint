@@ -4,8 +4,8 @@ moves.fl:9:11: error: cannot use 'a' while it is mutably borrowed
 moves.fl:8:10: note: 'a' was mutably borrowed here
     	let m = &mut a
     	        ^
-moves.fl:18:11: note: the borrow is still used here
-    	let t = &m    // error: can't borrow m either, it was moved
+moves.fl:10:11: note: the borrow is still used here
+    	let m3 = m  	// error: m was moved
     	         ^
 moves.fl:18:11: error: borrow of moved value 'm'
     	let t = &m    // error: can't borrow m either, it was moved

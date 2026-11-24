@@ -1,0 +1,15 @@
+break_borrows.fl:8:14: error: use of moved value 'm'
+    	let again = m       // error: m was moved inside the loop
+    	            ^
+break_borrows.fl:5:11: note: 'm' was moved here
+    		let k = m       // moves m...
+    		        ^
+break_borrows.fl:16:4: error: cannot assign to 'b' while it is borrowed
+    			b = 5           // error: continue goes back to the top, and r is read below
+    			^
+break_borrows.fl:11:10: note: 'b' was borrowed here
+    	let r = &b
+    	        ^
+break_borrows.fl:19:14: note: the borrow is still used here
+    		let peek = r
+    		           ^

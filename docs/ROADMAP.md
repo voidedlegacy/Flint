@@ -9,7 +9,7 @@ an update to the test runner's expected results, and a commit.
 - [x] 29. Dereference: `*r` reads through `&T`/`&mut T`; `*r = e` writes, and only through `&mut T`.
       Borrowck: writing through r counts as a use of r's loans. Codegen: load/store through the ptr.
       Test: `fn bump(c: &mut i64) { *c = *c + 1 }` changes the caller's variable.
-- [ ] 30. `break` and `continue`. Replace the borrow checker's "later in the source" rule with a real
+- [x] 30. `break` and `continue`. Replace the borrow checker's "later in the source" rule with a real
       control-flow graph plus liveness analysis. This also fixes if/else being too strict, where a use
       in `else` counted as "after" code in `then`. A `for { }` that contains `break` no longer counts
       as "always returns".

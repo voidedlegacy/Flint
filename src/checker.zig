@@ -20,6 +20,7 @@ pub const Checker = struct {
     types: *TypeTable,
     functions: std.StringHashMapUnmanaged(*ast.FnDecl) = .empty, // every fn, by name
     current_fn: *ast.FnDecl = undefined, // whose body we are checking
+    loop_depth: u32 = 0, // how many loops we are inside, for break/continue
 
     //   symbols:      [ a | b | a | x ]
     //   scope_starts:   ^0      ^2        -> inner scope holds "a", "x"
@@ -82,7 +83,8 @@ pub const Checker = struct {
     ///   return          -> always returns
     ///   { a; b; c }     -> if any statement always returns
     ///   if/else         -> only if BOTH branches always return
-    ///   for { }         -> a loop with no exit never falls through
+    ///   for { }         -> a loop with no exit never falls through,
+    ///                      unless a `break` gets out of it
     fn alwaysReturns(s: *const Stmt) bool {
         return switch (s.data) {
             .ret => true,
@@ -91,10 +93,23 @@ pub const Checker = struct {
             } else false,
             .if_ => |i| if (i.else_stmt) |e| alwaysReturns(i.then_block) and alwaysReturns(e) else false,
             .for_ => |f| switch (f.cond.data) {
-                .bool => |v| v,
+                .bool => |v| v and !breaksOut(f.body),
                 else => false,
             },
             else => false,
+        };
+    }
+
+    /// Does `s` contain a `break` that leaves the loop around it? A break
+    /// inside a nested loop only leaves that inner loop.
+    fn breaksOut(s: *const Stmt) bool {
+        return switch (s.data) {
+            .break_ => true,
+            .block => |b| for (b.stmts) |child| {
+                if (breaksOut(child)) break true;
+            } else false,
+            .if_ => |i| breaksOut(i.then_block) or (if (i.else_stmt) |e| breaksOut(e) else false),
+            else => false, // includes .for_: its breaks are its own
         };
     }
 
@@ -165,7 +180,12 @@ pub const Checker = struct {
             },
             .for_ => |f| {
                 _ = self.expectType(f.cond, try self.checkExpr(f.cond), self.types.boolean());
+                self.loop_depth += 1;
+                defer self.loop_depth -= 1;
                 try self.checkStmt(f.body);
+            },
+            .break_, .continue_ => if (self.loop_depth == 0) {
+                self.diag.err(s.offset, "'{s}' outside of a loop", .{if (s.data == .break_) "break" else "continue"});
             },
             .if_ => |i| {
                 _ = self.expectType(i.cond, try self.checkExpr(i.cond), self.types.boolean());

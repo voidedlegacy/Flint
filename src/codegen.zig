@@ -31,6 +31,12 @@ pub const CodeGen = struct {
     terminated: bool = false, // the current block already ended with br/ret
     slots: std.AutoHashMapUnmanaged(*const ast.Var, []const u8) = .empty, // var -> its alloca
     slot_count: u32 = 0,
+    loops: std.ArrayList(LoopLabels) = .empty, // innermost last, for break/continue
+
+    const LoopLabels = struct {
+        cond: []const u8, // continue jumps here
+        end: []const u8, // break jumps here
+    };
 
     pub fn init(arena: std.mem.Allocator) CodeGen {
         return .{ .arena = arena, .allocas = .init(arena), .body = .init(arena) };
@@ -107,6 +113,7 @@ pub const CodeGen = struct {
         self.body.clearRetainingCapacity();
         self.slots.clearRetainingCapacity();
         self.slot_count = 0;
+        self.loops.clearRetainingCapacity();
         self.next_tmp = 0;
         self.next_label = 0;
         self.terminated = false;
@@ -173,6 +180,9 @@ pub const CodeGen = struct {
             },
             .expr => |e| _ = try self.emitExpr(e), // result unused
             .for_ => |f| try self.emitFor(f),
+            // The checker guarantees we are inside a loop.
+            .break_ => try self.branchTo(self.loops.getLast().end),
+            .continue_ => try self.branchTo(self.loops.getLast().cond),
             .if_ => |i| try self.emitIf(i),
             .block => |b| for (b.stmts) |child| try self.emitStmt(child),
         }
@@ -184,6 +194,8 @@ pub const CodeGen = struct {
     //   bodyN:  ...
     //           br %condN          <- jump back: this is the loop
     //   endN:   (code after the loop)
+    //
+    //   Inside the body, `continue` is `br %condN` and `break` is `br %endN`.
     fn emitFor(self: *CodeGen, f: Stmt.For) Error!void {
         const n = self.next_label;
         self.next_label += 1;
@@ -199,7 +211,9 @@ pub const CodeGen = struct {
         self.terminated = true;
 
         try self.label(body_name);
+        try self.loops.append(self.arena, .{ .cond = cond_name, .end = end_name });
         try self.emitStmt(f.body);
+        _ = self.loops.pop();
         try self.branchTo(cond_name);
 
         try self.label(end_name);

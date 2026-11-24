@@ -1,0 +1,16 @@
+fn main() {
+	break               // error: not inside a loop
+	for {
+		continue
+	}
+}
+
+fn skip() {
+	continue            // error: not inside a loop
+}
+
+fn forever() -> i64 {
+	for {
+		break
+	}
+}                   // error: the break means we can get here

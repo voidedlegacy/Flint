@@ -1,0 +1,44 @@
+// break leaves the innermost loop; continue jumps back to its condition.
+
+// The first n with n * n > limit. `for { }` only ends through break or return.
+fn first_square_over(limit: i64) -> i64 {
+	var n = 0
+	for {
+		n = n + 1
+		if n * n > limit {
+			return n
+		}
+	}
+}
+
+fn main() -> i64 {
+	// Sum the odd numbers below 10, skipping the even ones: 1+3+5+7+9 = 25
+	var sum = 0
+	var i = 0
+	for i < 10 {
+		i = i + 1
+		if i == i / 2 * 2 {
+			continue
+		}
+		if i == 10 {
+			break
+		}
+		sum = sum + i
+	}
+
+	// break only leaves the inner loop: 3 rounds of 3 steps = 9
+	var steps = 0
+	var round = 0
+	for round < 3 {
+		round = round + 1
+		for {
+			steps = steps + 1
+			if steps == round * 3 {
+				break
+			}
+		}
+	}
+
+	// 25 + 9 + 8 = 42 (8 * 8 = 64 > 50)
+	return sum + steps + first_square_over(50)
+}

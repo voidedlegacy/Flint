@@ -158,6 +158,7 @@ test {
     _ = @import("diag.zig");
     _ = @import("parser.zig");
     _ = @import("checker.zig");
+    _ = @import("cfg.zig");
     _ = @import("borrowck.zig");
     _ = @import("codegen.zig");
 }

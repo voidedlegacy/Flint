@@ -20,6 +20,8 @@ pub const TokenKind = enum(u8) {
     kw_false,
     kw_for,
     kw_return,
+    kw_break,
+    kw_continue,
     kw_unsafe,
     kw_mut,
 
@@ -52,7 +54,7 @@ pub const TokenKind = enum(u8) {
     /// if the previous token could end one.
     pub fn endsStatement(k: TokenKind) bool {
         return switch (k) {
-            .ident, .int_lit, .string_lit, .rparen, .rbrace, .kw_return, .kw_true, .kw_false => true,
+            .ident, .int_lit, .string_lit, .rparen, .rbrace, .kw_return, .kw_break, .kw_continue, .kw_true, .kw_false => true,
             else => false,
         };
     }
@@ -92,6 +94,8 @@ pub const keywords = std.StaticStringMap(TokenKind).initComptime(.{
     .{ "else", .kw_else },
     .{ "for", .kw_for },
     .{ "return", .kw_return },
+    .{ "break", .kw_break },
+    .{ "continue", .kw_continue },
     .{ "unsafe", .kw_unsafe },
     .{ "mut", .kw_mut },
     .{ "true", .kw_true },
@@ -110,6 +114,7 @@ comptime {
 test "keywords" {
     try std.testing.expectEqual(TokenKind.kw_fn, keywordOrIdent("fn"));
     try std.testing.expectEqual(TokenKind.kw_mut, keywordOrIdent("mut"));
+    try std.testing.expectEqual(TokenKind.kw_break, keywordOrIdent("break"));
     try std.testing.expectEqual(TokenKind.ident, keywordOrIdent("count"));
     try std.testing.expectEqual(TokenKind.ident, keywordOrIdent("fnx"));
 }

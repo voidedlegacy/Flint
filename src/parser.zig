@@ -78,6 +78,14 @@ pub const Parser = struct {
             .lbrace => s = try self.parseBlock(),
             .kw_if => s = try self.parseIf(),
             .kw_for => s = try self.parseFor(),
+            .kw_break => {
+                self.bump();
+                s = try self.newStmt(t.offset, .break_);
+            },
+            .kw_continue => {
+                self.bump();
+                s = try self.newStmt(t.offset, .continue_);
+            },
             .kw_return => {
                 self.bump();
                 const value = if (self.tok.kind == .semicolon) null else try self.parseExpr();

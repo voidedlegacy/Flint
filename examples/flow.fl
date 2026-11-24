@@ -1,0 +1,26 @@
+// The borrow checker follows the control-flow graph: a loan only lives
+// while some path from here still reads the variable that holds it.
+fn main() -> i64 {
+	var a = 40
+	var b = 0
+	let m = &mut a
+	if b == 0 {
+		*m = *m + 1     // last use of m on this path
+		a = a + 1       // ok: the else branch is not "later" than this
+	} else {
+		*m = 0
+	}
+
+	var x = 0
+	var n = 0
+	for n < 10 {
+		let r = &x
+		if n == 5 {
+			x = a           // ok: we break right away, so r is never read again
+			break
+		}
+		let k = *r
+		n = n + k + 1
+	}
+	return x            // 42
+}

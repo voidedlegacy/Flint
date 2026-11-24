@@ -4,9 +4,9 @@ deref_borrows.fl:4:2: error: cannot assign to 'y' while it is mutably borrowed
 deref_borrows.fl:3:10: note: 'y' was mutably borrowed here
     	let m = &mut y
     	        ^
-deref_borrows.fl:6:12: note: the borrow is still used here
-    	let mm = &m
-    	          ^
+deref_borrows.fl:5:3: note: the borrow is still used here
+    	*m = 7
+    	 ^
 deref_borrows.fl:7:15: error: cannot move a '&mut i64' out from behind a reference
     	let stolen = *mm        // error: a &mut can't be copied out of a reference
     	             ^
