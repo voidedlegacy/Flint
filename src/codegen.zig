@@ -29,6 +29,7 @@ pub const CodeGen = struct {
     next_tmp: u32 = 0,
     next_label: u32 = 0,
     terminated: bool = false, // the current block already ended with br/ret
+    block: []const u8 = "entry", // name of the current block, for phi
     slots: std.AutoHashMapUnmanaged(*const ast.Var, []const u8) = .empty, // var -> its alloca
     slot_count: u32 = 0,
     loops: std.ArrayList(LoopLabels) = .empty, // innermost last, for break/continue
@@ -87,6 +88,7 @@ pub const CodeGen = struct {
     /// Starts a new basic block. The previous one must already be terminated.
     fn label(self: *CodeGen, name: []const u8) Error!void {
         try self.body.writer.print("{s}:\n", .{name});
+        self.block = name;
         self.terminated = false;
     }
 
@@ -117,6 +119,7 @@ pub const CodeGen = struct {
         self.next_tmp = 0;
         self.next_label = 0;
         self.terminated = false;
+        self.block = "entry";
         self.ret_type = f.ret_type;
 
         // Parameters arrive as values (%a.arg). Copy each into a stack slot
@@ -149,9 +152,8 @@ pub const CodeGen = struct {
         if (self.terminated) {
             // Code after `return` is unreachable, but LLVM still needs every
             // instruction to live in a block. Open a fresh (dead) one.
-            try self.body.writer.print("dead{d}:\n", .{self.next_label});
+            try self.label(try std.fmt.allocPrint(self.arena, "dead{d}", .{self.next_label}));
             self.next_label += 1;
-            self.terminated = false;
         }
 
         switch (s.data) {
@@ -286,12 +288,17 @@ pub const CodeGen = struct {
                     try self.line("store {s} {s}, ptr {s}", .{ ty, v, slot });
                     return slot;
                 }
-                const v = try self.emitExpr(u.operand); // unary minus
+                const v = try self.emitExpr(u.operand);
                 const r = try self.tmp();
-                try self.line("{s} = sub i64 0, {s}", .{ r, v });
+                if (u.op == .bang) {
+                    try self.line("{s} = xor i1 {s}, true", .{ r, v }); // flips the bit
+                } else {
+                    try self.line("{s} = sub i64 0, {s}", .{ r, v }); // -x is 0 - x
+                }
                 return r;
             },
             .binary => |b| {
+                if (b.op == .amp_amp or b.op == .pipe_pipe) return self.emitShortCircuit(b);
                 const l = try self.emitExpr(b.lhs);
                 const rr = try self.emitExpr(b.rhs);
                 const r = try self.tmp();
@@ -335,5 +342,44 @@ pub const CodeGen = struct {
                 return r;
             },
         }
+    }
+
+    // a && b only evaluates b if a is true; a || b only if a is false.
+    // So it is a branch, not an `and` instruction:
+    //
+    //   (block A)  %l = a
+    //              br i1 %l, %rhsN, %joinN      (|| swaps the targets)
+    //   rhsN:      %r = b
+    //              br %joinN
+    //   joinN:     %t = phi i1 [ false, %A ], [ %r, %rhsN ]   (|| : true)
+    //
+    // phi picks a value by the block we came from. b may contain branches
+    // of its own, so the edge into joinN starts in whatever block b ended in.
+    fn emitShortCircuit(self: *CodeGen, b: Expr.Binary) Error![]const u8 {
+        const is_and = b.op == .amp_amp;
+        const n = self.next_label;
+        self.next_label += 1;
+        const rhs_name = try std.fmt.allocPrint(self.arena, "rhs{d}", .{n});
+        const join_name = try std.fmt.allocPrint(self.arena, "join{d}", .{n});
+
+        const l = try self.emitExpr(b.lhs);
+        const lhs_block = self.block;
+        if (is_and) {
+            try self.line("br i1 {s}, label %{s}, label %{s}", .{ l, rhs_name, join_name });
+        } else {
+            try self.line("br i1 {s}, label %{s}, label %{s}", .{ l, join_name, rhs_name });
+        }
+        self.terminated = true;
+
+        try self.label(rhs_name);
+        const r = try self.emitExpr(b.rhs);
+        const rhs_block = self.block;
+        try self.branchTo(join_name);
+
+        try self.label(join_name);
+        const t = try self.tmp();
+        // Skipping b means the answer is already known: false for &&, true for ||.
+        try self.line("{s} = phi i1 [ {s}, %{s} ], [ {s}, %{s} ]", .{ t, if (is_and) "false" else "true", lhs_block, r, rhs_block });
+        return t;
     }
 };

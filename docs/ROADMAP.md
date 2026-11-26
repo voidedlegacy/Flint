@@ -13,7 +13,7 @@ an update to the test runner's expected results, and a commit.
       control-flow graph plus liveness analysis. This also fixes if/else being too strict, where a use
       in `else` counted as "after" code in `then`. A `for { }` that contains `break` no longer counts
       as "always returns".
-- [ ] 31. Logic: `!x`, `a && b`, `a || b` on bool, with short-circuit codegen (branches, not `and`).
+- [x] 31. Logic: `!x`, `a && b`, `a || b` on bool, with short-circuit codegen (branches, not `and`).
       Precedence, lowest first: `||`, `&&`, comparisons, `+ -`, `* /`, prefix.
 - [ ] 32. Calling C: `extern fn putchar(c: i32) -> i32` declares a C function (emitted as an LLVM `declare`).
       First visible output: print digits and a newline.

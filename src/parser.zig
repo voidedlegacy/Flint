@@ -191,7 +191,7 @@ pub const Parser = struct {
     /// i64   bool   &T   &mut T
     fn parseType(self: *Parser) Error!*ast.TypeRef {
         const t = self.tok;
-        if (t.kind == .amp) {
+        if (t.kind == .amp or t.kind == .amp_amp) {
             self.bump();
             var is_mut = false;
             if (self.tok.kind == .kw_mut) {
@@ -199,7 +199,11 @@ pub const Parser = struct {
                 self.bump();
             }
             const pointee = try self.parseType();
-            return self.newTypeRef(.{ .offset = t.offset, .name = "", .pointee = pointee, .is_mut = is_mut });
+            const ref = try self.newTypeRef(.{ .offset = t.offset, .name = "", .pointee = pointee, .is_mut = is_mut });
+            if (t.kind == .amp) return ref;
+            // &&T is &(&T), as in expressions.
+            ref.offset = t.offset + 1;
+            return self.newTypeRef(.{ .offset = t.offset, .name = "", .pointee = ref, .is_mut = false });
         }
         if (t.kind == .ident) {
             self.bump();
@@ -257,11 +261,14 @@ pub const Parser = struct {
     // ------------------------------------------------------------ expressions
 
     /// 0 means "not a binary operator", which ends the loop in parseExprPrec.
+    ///   a || b && c == d + e * f   is   a || (b && (c == (d + (e * f))))
     fn precedence(k: TokenKind) u8 {
         return switch (k) {
-            .eq_eq, .not_eq, .less, .less_eq, .greater, .greater_eq => 1,
-            .plus, .minus => 2,
-            .star, .slash => 3,
+            .pipe_pipe => 1,
+            .amp_amp => 2,
+            .eq_eq, .not_eq, .less, .less_eq, .greater, .greater_eq => 3,
+            .plus, .minus => 4,
+            .star, .slash => 5,
             else => 0,
         };
     }
@@ -269,10 +276,11 @@ pub const Parser = struct {
     /// Prefix operators bind tighter than any binary operator.
     fn parseUnary(self: *Parser) Error!*Expr {
         const t = self.tok;
-        if (t.kind == .minus) {
+        if (t.kind == .minus or t.kind == .bang) {
+            // -x negates an i64, !x flips a bool.
             self.bump();
             const operand = try self.parseUnary();
-            return self.newExpr(t.offset, .{ .unary = .{ .op = .minus, .is_mut = false, .operand = operand } });
+            return self.newExpr(t.offset, .{ .unary = .{ .op = t.kind, .is_mut = false, .operand = operand } });
         }
         if (t.kind == .star) {
             // *r: read (or, as an assignment target, write) through a reference.
@@ -280,7 +288,9 @@ pub const Parser = struct {
             const operand = try self.parseUnary();
             return self.newExpr(t.offset, .{ .unary = .{ .op = .star, .is_mut = false, .operand = operand } });
         }
-        if (t.kind == .amp) {
+        if (t.kind == .amp or t.kind == .amp_amp) {
+            // The lexer reads `&&` as one token, but in front of an operand
+            // it means two borrows: &&x is &(&x), and &&mut x is &(&mut x).
             self.bump();
             var is_mut = false;
             if (self.tok.kind == .kw_mut) {
@@ -288,7 +298,11 @@ pub const Parser = struct {
                 self.bump();
             }
             const operand = try self.parseUnary();
-            return self.newExpr(t.offset, .{ .unary = .{ .op = .amp, .is_mut = is_mut, .operand = operand } });
+            if (t.kind == .amp) {
+                return self.newExpr(t.offset, .{ .unary = .{ .op = .amp, .is_mut = is_mut, .operand = operand } });
+            }
+            const inner = try self.newExpr(t.offset + 1, .{ .unary = .{ .op = .amp, .is_mut = is_mut, .operand = operand } });
+            return self.newExpr(t.offset, .{ .unary = .{ .op = .amp, .is_mut = false, .operand = inner } });
         }
         return self.parsePrimary();
     }
@@ -392,4 +406,7 @@ test "precedence and associativity" {
     try expectDump("&mut x", "(&mut x)");
     try expectDump("f(1, g(x), &y)", "(call f 1 (call g x) (& y))");
     try expectDump("*c * **d", "(* (* c) (* (* d)))");
+    try expectDump("a || b && c == d + e * f", "(|| a (&& b (== c (+ d (* e f)))))");
+    try expectDump("!a && !!b || c", "(|| (&& (! a) (! (! b))) c)");
+    try expectDump("&&x == &&mut y", "(== (& (& x)) (& (&mut y)))");
 }

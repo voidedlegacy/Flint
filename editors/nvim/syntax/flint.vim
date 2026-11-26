@@ -20,7 +20,7 @@ syntax match  flintEscape  contained "\\."
 syntax region flintString  start=+"+ skip=+\\.+ end=+"+ end=+$+ contains=flintEscape
 
 " Operators (in &mut, & is an operator and mut a keyword)
-syntax match flintOperator "==\|!=\|<=\|>=\|[-+*/=&<>]"
+syntax match flintOperator "==\|!=\|<=\|>=\|&&\|||\|[-+*/=&<>!]"
 
 " Comments (last, so // beats the / operator)
 syntax keyword flintTodo    contained TODO FIXME NOTE XXX

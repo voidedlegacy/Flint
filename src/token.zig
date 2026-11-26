@@ -48,6 +48,9 @@ pub const TokenKind = enum(u8) {
     star,
     slash,
     amp, // & (&mut = amp + kw_mut)
+    amp_amp, // && (in front of an operand it is two &)
+    pipe_pipe, // ||
+    bang, // !
     arrow, // ->
 
     /// Go-style semicolon insertion: a newline ends the statement only

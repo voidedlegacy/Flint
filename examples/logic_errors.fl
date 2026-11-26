@@ -1,0 +1,8 @@
+fn main() {
+	let n = 1
+	let a = !n               // error: ! needs a bool
+	let b = n && true        // error: && needs bools on both sides
+	let c = true || 2        // error: so does ||
+	if 1 < 2 && 3 {          // error: && binds looser than <, so 3 is on its own
+	}
+}

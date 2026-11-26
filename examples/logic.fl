@@ -1,0 +1,32 @@
+// ! flips a bool; && and || stop as soon as the answer is known.
+
+// Counts how often it runs, so we can see which calls were skipped.
+fn tick(count: &mut i64, result: bool) -> bool {
+	*count = *count + 1
+	return result
+}
+
+fn between(x: i64, lo: i64, hi: i64) -> bool {
+	return lo <= x && x <= hi
+}
+
+fn main() -> i64 {
+	var calls = 0
+	let a = false && tick(&mut calls, true)   // skipped: calls stays 0
+	let b = true || tick(&mut calls, true)    // skipped
+	let c = true && tick(&mut calls, false)   // runs: calls = 1
+	let d = false || tick(&mut calls, true)   // runs: calls = 2
+
+	var score = calls * 10                    // 20
+	if !a && b && !c && d {
+		score = score + 10                    // 30
+	}
+	// && binds tighter than ||: this is true || (false && false)
+	if true || false && false {
+		score = score + 4                     // 34
+	}
+	if between(5, 1, 9) && !between(0, 1, 9) {
+		score = score + 8                     // 42
+	}
+	return score
+}

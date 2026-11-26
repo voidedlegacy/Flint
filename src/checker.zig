@@ -271,6 +271,11 @@ pub const Checker = struct {
                         },
                     };
                 }
+                if (u.op == .bang) {
+                    // !x needs a bool and gives a bool.
+                    if (!self.expectType(u.operand, operand, tt.boolean())) return tt.err();
+                    return tt.boolean();
+                }
                 // unary minus
                 if (!self.expectType(u.operand, operand, tt.int())) return tt.err();
                 return tt.int();
@@ -281,6 +286,13 @@ pub const Checker = struct {
                 if (b.op == .eq_eq or b.op == .not_eq) {
                     // == and != need both sides to have the same type, and give bool.
                     if (!self.expectType(b.rhs, rhs, lhs)) return tt.err();
+                    return tt.boolean();
+                }
+                if (b.op == .amp_amp or b.op == .pipe_pipe) {
+                    // && and || need bool on both sides, and give bool.
+                    const ok_l = self.expectType(b.lhs, lhs, tt.boolean());
+                    const ok_r = self.expectType(b.rhs, rhs, tt.boolean());
+                    if (!(ok_l and ok_r)) return tt.err();
                     return tt.boolean();
                 }
                 // < <= > >= compare two i64 and give bool.

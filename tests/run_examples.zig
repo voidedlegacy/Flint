@@ -44,6 +44,8 @@ const expectations = std.StaticStringMap(Expect).initComptime(.{
     .{ "flow", Expect{ .runs = 42 } },
     .{ "break_errors", Expect{ .errors = 3 } },
     .{ "break_borrows", Expect{ .errors = 2 } },
+    .{ "logic", Expect{ .runs = 42 } },
+    .{ "logic_errors", Expect{ .errors = 4 } },
 });
 
 pub fn main(init: std.process.Init) !u8 {

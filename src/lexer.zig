@@ -56,9 +56,10 @@ pub const Lexer = struct {
             '-' => self.make(if (self.match('>')) .arrow else .minus),
             '*' => self.make(.star),
             '/' => self.make(.slash),
-            '&' => self.make(.amp),
+            '&' => self.make(if (self.match('&')) .amp_amp else .amp),
+            '|' => self.make(if (self.match('|')) .pipe_pipe else .err),
             '=' => self.make(if (self.match('=')) .eq_eq else .assign),
-            '!' => self.make(if (self.match('=')) .not_eq else .err),
+            '!' => self.make(if (self.match('=')) .not_eq else .bang),
             '<' => self.make(if (self.match('=')) .less_eq else .less),
             '>' => self.make(if (self.match('=')) .greater_eq else .greater),
             '"' => self.lexString(),
@@ -165,7 +166,10 @@ test "eof inserts a semicolon" {
 
 test "operators and comments" {
     try expectKinds("a == b != c <= d >= e -> &mut ! // hi\n", &.{
-        .ident, .eq_eq, .ident, .not_eq, .ident, .less_eq, .ident, .greater_eq, .ident, .arrow, .amp, .kw_mut, .err, .eof,
+        .ident, .eq_eq, .ident, .not_eq, .ident, .less_eq, .ident, .greater_eq, .ident, .arrow, .amp, .kw_mut, .bang, .eof,
+    });
+    try expectKinds("a && !b || c | d", &.{
+        .ident, .amp_amp, .bang, .ident, .pipe_pipe, .ident, .err, .ident, .semicolon, .eof,
     });
 }
 

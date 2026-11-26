@@ -33,7 +33,7 @@ pub const Expr = struct {
     };
 
     pub const Unary = struct {
-        op: TokenKind, // .minus, .amp (& / &mut) or .star (deref)
+        op: TokenKind, // .minus, .bang (not), .amp (& / &mut) or .star (deref)
         is_mut: bool, // true for &mut
         operand: *Expr,
     };
@@ -141,6 +141,9 @@ pub fn opText(op: TokenKind) []const u8 {
         .greater => ">",
         .greater_eq => ">=",
         .amp => "&",
+        .amp_amp => "&&",
+        .pipe_pipe => "||",
+        .bang => "!",
         else => "?",
     };
 }
