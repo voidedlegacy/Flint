@@ -15,10 +15,13 @@ an update to the test runner's expected results, and a commit.
       as "always returns".
 - [x] 31. Logic: `!x`, `a && b`, `a || b` on bool, with short-circuit codegen (branches, not `and`).
       Precedence, lowest first: `||`, `&&`, comparisons, `+ -`, `* /`, prefix.
-- [ ] 32. Calling C: `extern fn putchar(c: i32) -> i32` declares a C function (emitted as an LLVM `declare`).
+- [x] 32. Calling C: `extern fn putchar(c: i32) -> i32` declares a C function (emitted as an LLVM `declare`).
       First visible output: print digits and a newline.
-- [ ] 33. More integer types: i8 i16 i32 i64 u8 u16 u32 u64, explicit casts with `as`, no implicit
-      conversions. Integer literals take the type they're used as (default i64).
+      The signature needed `i32`, so it came early, along with the literal rule from step 33: an integer
+      literal takes the integer type its context wants (default i64), and must fit in it. No casts yet.
+      The example runner also checks a program's stdout against tests/expected/<name>.out.
+- [ ] 33. More integer types: i8 i16 u8 u16 u32 u64 (i32 and i64 exist), explicit casts with `as`, no
+      implicit conversions. Integer literals already take the type they're used as (default i64).
 - [ ] 34. Strings: `str` type = (ptr, len) and a `print(s: str)` built on the C call from step 32.
       Real "Hello, world!".
 - [ ] 35. Structs: `type Point struct { x: i64, y: i64 }`, literals `Point{ x: 1, y: 2 }`, field

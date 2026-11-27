@@ -4,11 +4,11 @@ if exists("b:current_syntax")
 endif
 
 " Keywords
-syntax keyword flintKeyword   fn type struct
+syntax keyword flintKeyword   fn extern type struct
 syntax keyword flintStorage   var let mut
 syntax keyword flintControl   if else for return break continue
 syntax keyword flintUnsafe    unsafe
-syntax keyword flintType      i64 bool
+syntax keyword flintType      i64 i32 bool
 syntax keyword flintBoolean   true false
 
 " Function name right after `fn` (lookbehind, so the fn keyword still wins)

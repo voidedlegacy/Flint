@@ -54,13 +54,14 @@ pub const Cfg = struct {
     vars: std.AutoArrayHashMapUnmanaged(*const Var, void) = .empty, // var -> bit index
     use_pos: std.AutoHashMapUnmanaged(*const Expr, u32) = .empty, // read -> index in its node's uses
 
-    /// Builds the graph of `f` and computes liveness. Everything lives in `a`.
+    /// Builds the graph of `f` (not an extern fn) and computes liveness.
+    /// Everything lives in `a`.
     pub fn build(a: std.mem.Allocator, f: *const ast.FnDecl) Error!Cfg {
         var cfg: Cfg = .{};
         var b: Builder = .{ .a = a, .cfg = &cfg };
         for (f.params) |p| _ = try cfg.varIndex(a, p);
         const entry = try b.add(.join, null);
-        _ = try b.stmt(f.body, entry);
+        _ = try b.stmt(f.body.?, entry);
         try cfg.computeLiveness(a);
         return cfg;
     }

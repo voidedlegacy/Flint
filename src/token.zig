@@ -10,6 +10,7 @@ pub const TokenKind = enum(u8) {
 
     // Keywords
     kw_fn,
+    kw_extern,
     kw_var,
     kw_let,
     kw_type,
@@ -89,6 +90,7 @@ comptime {
 
 pub const keywords = std.StaticStringMap(TokenKind).initComptime(.{
     .{ "fn", .kw_fn },
+    .{ "extern", .kw_extern },
     .{ "var", .kw_var },
     .{ "let", .kw_let },
     .{ "type", .kw_type },
@@ -118,6 +120,7 @@ test "keywords" {
     try std.testing.expectEqual(TokenKind.kw_fn, keywordOrIdent("fn"));
     try std.testing.expectEqual(TokenKind.kw_mut, keywordOrIdent("mut"));
     try std.testing.expectEqual(TokenKind.kw_break, keywordOrIdent("break"));
+    try std.testing.expectEqual(TokenKind.kw_extern, keywordOrIdent("extern"));
     try std.testing.expectEqual(TokenKind.ident, keywordOrIdent("count"));
     try std.testing.expectEqual(TokenKind.ident, keywordOrIdent("fnx"));
 }

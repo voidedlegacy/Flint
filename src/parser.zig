@@ -22,12 +22,22 @@ pub const Parser = struct {
         return .{ .lex = lex, .arena = arena, .diag = diag, .tok = lex.next() };
     }
 
-    /// Parses a whole file: a list of top-level fn declarations.
+    /// Parses a whole file: a list of top-level `fn` and `extern fn` declarations.
     pub fn parseFile(self: *Parser) Error![]*ast.FnDecl {
         var fns: std.ArrayList(*ast.FnDecl) = .empty;
         while (!self.atEof()) {
             if (self.tok.kind == .kw_fn) {
-                try fns.append(self.arena, try self.parseFn());
+                try fns.append(self.arena, try self.parseFn(null));
+            } else if (self.tok.kind == .kw_extern) {
+                const ext = self.tok;
+                self.bump(); // 'extern'
+                if (self.tok.kind == .kw_fn) {
+                    try fns.append(self.arena, try self.parseFn(ext));
+                } else {
+                    self.err(self.tok, "expected 'fn' after 'extern'");
+                    self.synchronize();
+                    self.panicking = false;
+                }
             } else {
                 self.err(self.tok, "expected 'fn'");
                 self.synchronize();
@@ -146,8 +156,9 @@ pub const Parser = struct {
     // ------------------------------------------------------------ declarations
 
     /// fn name(a: i64, b: &mut i64) -> i64 { ... }
-    fn parseFn(self: *Parser) Error!*ast.FnDecl {
-        const fn_tok = self.tok;
+    /// extern fn name(a: i32) -> i32          (`extern` already consumed)
+    fn parseFn(self: *Parser, extern_tok: ?Token) Error!*ast.FnDecl {
+        const fn_tok = extern_tok orelse self.tok; // the declaration starts here
         self.bump(); // 'fn'
         const name = self.tok;
         self.expect(.ident, "expected a function name");
@@ -173,8 +184,20 @@ pub const Parser = struct {
             ret = try self.parseType();
         }
 
-        const body = try self.parseBlock();
-        if (self.tok.kind == .semicolon) self.bump(); // inserted after '}'
+        var body: ?*Stmt = null; // an extern fn has none: C defines it
+        if (extern_tok == null) {
+            body = try self.parseBlock();
+            if (self.tok.kind == .semicolon) self.bump(); // inserted after '}'
+        } else if (self.tok.kind == .lbrace) {
+            self.err(self.tok, "an extern fn has no body: it is defined in C");
+            _ = try self.parseBlock(); // skip it as a whole, then carry on
+            if (self.tok.kind == .semicolon) self.bump();
+        } else if (self.tok.kind == .semicolon) {
+            self.bump(); // the newline after `-> i32` or `)`
+        } else {
+            self.err(self.tok, "expected end of declaration");
+            self.synchronize();
+        }
         self.panicking = false;
 
         const f = try self.arena.create(ast.FnDecl);
@@ -409,4 +432,22 @@ test "precedence and associativity" {
     try expectDump("a || b && c == d + e * f", "(|| a (&& b (== c (+ d (* e f)))))");
     try expectDump("!a && !!b || c", "(|| (&& (! a) (! (! b))) c)");
     try expectDump("&&x == &&mut y", "(== (& (& x)) (& (&mut y)))");
+}
+
+test "extern fn has a signature and no body" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const src = "extern fn putchar(c: i32) -> i32\nextern fn exit(code: i32)\nfn main() {\n}\n";
+    var sink: std.Io.Writer.Discarding = .init(&.{});
+    var diag = Diagnostics.init("t.fl", src, &sink.writer);
+    var lex = Lexer.init(src);
+    var p = Parser.init(&lex, arena.allocator(), &diag);
+    const fns = try p.parseFile();
+    try std.testing.expectEqual(@as(u32, 0), diag.errorCount());
+    try std.testing.expectEqual(@as(usize, 3), fns.len);
+    try std.testing.expect(fns[0].isExtern() and fns[1].isExtern() and !fns[2].isExtern());
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+    try ast.dumpFn(&out.writer, fns[0]);
+    try std.testing.expectEqualStrings("(extern fn putchar (c: i32) -> i32)", out.written());
 }

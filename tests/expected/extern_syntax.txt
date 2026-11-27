@@ -1,0 +1,9 @@
+extern_syntax.fl:1:27: error: an extern fn has no body: it is defined in C
+    extern fn exit(code: i32) {         // error: C has the body, so there is none here
+                              ^
+extern_syntax.fl:4:8: error: expected 'fn' after 'extern'
+    extern putchar(c: i32) -> i32       // error: 'fn' must follow 'extern'
+           ^
+extern_syntax.fl:5:30: error: expected end of declaration
+    extern fn abs(n: i32) -> i32 abs    // error: junk after the declaration
+                                 ^

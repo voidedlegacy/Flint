@@ -77,6 +77,7 @@ pub const BorrowChecker = struct {
 
     pub fn run(self: *BorrowChecker, fns: []*ast.FnDecl) Error!void {
         for (fns) |f| {
+            if (f.isExtern()) continue; // nothing to check: C has the body
             _ = self.scratch.reset(.retain_capacity);
             self.state = .{};
             self.loans = .empty;

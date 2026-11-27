@@ -1,0 +1,20 @@
+extern fn putchar(c: i32) -> i32
+extern fn main()                    // error: main is the program's own entry point
+extern fn putchar(c: i32) -> i32    // error: putchar is already defined
+extern fn sqrt(x: f64) -> f64       // errors: no f64 type (yet), twice
+
+fn wide(n: i64) {
+	putchar(n)                      // error: an i64 is not an i32, and nothing converts it
+}
+
+fn demo() {
+	putchar(3000000000)             // error: too big for an i32
+	putchar(-2147483648)            // ok: the smallest i32
+	putchar(-2147483649)            // error: one less does not fit
+	let c = putchar(65)             // c is an i32
+	let sum = 5 + c * 2             // ok: the literals take c's type
+	let big = sum + 4294967296      // error: so this one has to fit in an i32
+	var x = 1                       // a bare literal is an i64
+	x = c                           // error: expected 'i64', found 'i32'
+	let same = c == x               // error: == needs the same type on both sides
+}

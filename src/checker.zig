@@ -3,6 +3,11 @@
 //!   2. gives every expression and variable a type,
 //!   3. enforces the rules: no undeclared names, no same-scope
 //!      redeclaration, no assigning to `let`, operand types must fit.
+//!
+//! Types flow up from the leaves, with one exception: an integer literal
+//! has no type of its own and takes the one its context asks for (the
+//! `hint`), so `putchar(10)` passes an i32. With no integer hint it is
+//! an i64. There are no implicit conversions between integer types.
 const std = @import("std");
 const ast = @import("ast.zig");
 const Diagnostics = @import("diag.zig").Diagnostics;
@@ -40,11 +45,15 @@ pub const Checker = struct {
             self.current_fn = f;
             try self.pushScope();
             for (f.params) |p| try self.declare(p); // parameters are `let`
-            try self.checkStmt(f.body);
+            const body = f.body orelse { // extern: C has the body
+                self.popScope();
+                continue;
+            };
+            try self.checkStmt(body);
             self.popScope();
 
-            if (f.ret_type != self.types.voidType() and f.ret_type != self.types.err() and !alwaysReturns(f.body)) {
-                self.diag.err(f.body.endOffset(), "function '{s}' must return a '{f}' on every path", .{ f.name, f.ret_type });
+            if (f.ret_type != self.types.voidType() and f.ret_type != self.types.err() and !alwaysReturns(body)) {
+                self.diag.err(body.endOffset(), "function '{s}' must return a '{f}' on every path", .{ f.name, f.ret_type });
             }
         }
     }
@@ -62,6 +71,11 @@ pub const Checker = struct {
         f.ret_type = if (f.ret_syntax) |r| try self.resolveType(r) else self.types.voidType();
 
         if (std.mem.eql(u8, f.name, "main")) {
+            // The C entry point is already called main.
+            if (f.isExtern()) {
+                self.diag.err(f.offset, "'main' cannot be extern: it must be the 'fn main' the program starts in", .{});
+                return;
+            }
             if (f.params.len != 0) self.diag.err(f.offset, "'main' must not take parameters", .{});
             if (f.ret_type != self.types.voidType() and f.ret_type != self.types.int()) {
                 self.diag.err(f.ret_syntax.?.offset, "'main' must return 'i64' or nothing", .{});
@@ -73,6 +87,7 @@ pub const Checker = struct {
     fn resolveType(self: *Checker, t: *const ast.TypeRef) Error!*const Type {
         if (t.pointee) |p| return self.types.ref(try self.resolveType(p), t.is_mut);
         if (std.mem.eql(u8, t.name, "i64")) return self.types.int();
+        if (std.mem.eql(u8, t.name, "i32")) return self.types.int32();
         if (std.mem.eql(u8, t.name, "bool")) return self.types.boolean();
         if (std.mem.eql(u8, t.name, "<error>")) return self.types.err(); // parser reported it
         self.diag.err(t.offset, "unknown type '{s}'", .{t.name});
@@ -149,7 +164,7 @@ pub const Checker = struct {
     fn checkStmt(self: *Checker, s: *Stmt) Error!void {
         switch (s.data) {
             .var_decl => |*v| {
-                v.type = try self.checkExpr(v.init.?); // before declare: `var x = x` is an error
+                v.type = try self.checkExpr(v.init.?, null); // before declare: `var x = x` is an error
                 if (v.type == self.types.voidType()) {
                     self.diag.err(v.init.?.offset, "this call returns nothing, so there is no value to store", .{});
                     v.type = self.types.err();
@@ -164,22 +179,23 @@ pub const Checker = struct {
                     }
                     return;
                 };
-                const got = try self.checkExpr(e);
+                const got = try self.checkExpr(e, ret);
                 if (ret == self.types.voidType()) {
                     self.diag.err(e.offset, "'{s}' does not return a value", .{self.current_fn.name});
                     return;
                 }
                 _ = self.expectType(e, got, ret);
             },
-            .expr => |e| _ = try self.checkExpr(e),
+            .expr => |e| _ = try self.checkExpr(e, null),
             .assign => |a| {
-                const value = try self.checkExpr(a.value);
-                const target = try self.checkExpr(a.target);
+                // The target goes first, so `x = 5` knows what type 5 is.
+                const target = try self.checkExpr(a.target, null);
+                const value = try self.checkExpr(a.value, target);
                 self.checkAssignTarget(a.target);
                 _ = self.expectType(a.value, value, target);
             },
             .for_ => |f| {
-                _ = self.expectType(f.cond, try self.checkExpr(f.cond), self.types.boolean());
+                _ = self.expectType(f.cond, try self.checkExpr(f.cond, self.types.boolean()), self.types.boolean());
                 self.loop_depth += 1;
                 defer self.loop_depth -= 1;
                 try self.checkStmt(f.body);
@@ -188,7 +204,7 @@ pub const Checker = struct {
                 self.diag.err(s.offset, "'{s}' outside of a loop", .{if (s.data == .break_) "break" else "continue"});
             },
             .if_ => |i| {
-                _ = self.expectType(i.cond, try self.checkExpr(i.cond), self.types.boolean());
+                _ = self.expectType(i.cond, try self.checkExpr(i.cond, self.types.boolean()), self.types.boolean());
                 try self.checkStmt(i.then_block);
                 if (i.else_stmt) |e| try self.checkStmt(e);
             },
@@ -229,15 +245,22 @@ pub const Checker = struct {
     // ------------------------------------------------------------ expressions
 
     /// Computes the type of `e`, stores it in e.type, and returns it.
-    fn checkExpr(self: *Checker, e: *Expr) Error!*const Type {
-        e.type = try self.computeType(e);
+    /// `hint` is the type the code around `e` wants, if it knows one. Only
+    /// integer literals use it, and it never causes an error by itself:
+    /// a mismatch is reported by whoever asked for the type.
+    fn checkExpr(self: *Checker, e: *Expr, hint: ?*const Type) Error!*const Type {
+        e.type = try self.computeType(e, hint);
         return e.type;
     }
 
-    fn computeType(self: *Checker, e: *Expr) Error!*const Type {
+    fn computeType(self: *Checker, e: *Expr, hint: ?*const Type) Error!*const Type {
         const tt = self.types;
         switch (e.data) {
-            .int => return tt.int(),
+            .int => |v| {
+                const t = self.literalType(hint);
+                self.checkLiteral(e, t, v, false);
+                return t;
+            },
             .bool => return tt.boolean(),
             .ident => |*id| {
                 id.decl = self.lookup(id.name);
@@ -248,8 +271,13 @@ pub const Checker = struct {
                 return d.type;
             },
             .unary => |u| {
-                const operand = try self.checkExpr(u.operand);
                 if (u.op == .amp) {
+                    // &5 where a &i32 is wanted: the 5 is an i32.
+                    const pointee: ?*const Type = if (hint) |h| switch (h.*) {
+                        .ref => |r| r.pointee,
+                        else => null,
+                    } else null;
+                    const operand = try self.checkExpr(u.operand, pointee);
                     // &mut *r would let you write through r, so r must be &mut.
                     if (u.is_mut) {
                         if (derefPointer(u.operand)) |ptr| {
@@ -262,6 +290,7 @@ pub const Checker = struct {
                 }
                 if (u.op == .star) {
                     // *r gives the value r points at.
+                    const operand = try self.checkExpr(u.operand, null);
                     return switch (operand.*) {
                         .ref => |r| r.pointee,
                         .err => tt.err(),
@@ -273,37 +302,93 @@ pub const Checker = struct {
                 }
                 if (u.op == .bang) {
                     // !x needs a bool and gives a bool.
+                    const operand = try self.checkExpr(u.operand, tt.boolean());
                     if (!self.expectType(u.operand, operand, tt.boolean())) return tt.err();
                     return tt.boolean();
                 }
-                // unary minus
-                if (!self.expectType(u.operand, operand, tt.int())) return tt.err();
-                return tt.int();
+                // unary minus. -2147483648 is an i32 although 2147483648
+                // alone is not, so a negated literal is checked as a whole.
+                if (u.operand.data == .int) {
+                    const t = self.literalType(hint);
+                    u.operand.type = t;
+                    self.checkLiteral(e, t, u.operand.data.int, true);
+                    return t;
+                }
+                const operand = try self.checkExpr(u.operand, hint);
+                const want = if (operand.isInt()) operand else tt.int();
+                if (!self.expectType(u.operand, operand, want)) return tt.err();
+                return want;
             },
             .binary => |b| {
-                const lhs = try self.checkExpr(b.lhs);
-                const rhs = try self.checkExpr(b.rhs);
-                if (b.op == .eq_eq or b.op == .not_eq) {
-                    // == and != need both sides to have the same type, and give bool.
-                    if (!self.expectType(b.rhs, rhs, lhs)) return tt.err();
-                    return tt.boolean();
-                }
                 if (b.op == .amp_amp or b.op == .pipe_pipe) {
                     // && and || need bool on both sides, and give bool.
+                    const lhs = try self.checkExpr(b.lhs, tt.boolean());
+                    const rhs = try self.checkExpr(b.rhs, tt.boolean());
                     const ok_l = self.expectType(b.lhs, lhs, tt.boolean());
                     const ok_r = self.expectType(b.rhs, rhs, tt.boolean());
                     if (!(ok_l and ok_r)) return tt.err();
                     return tt.boolean();
                 }
-                // < <= > >= compare two i64 and give bool.
-                // + - * / need i64 on both sides, and give i64.
-                const ok_l = self.expectType(b.lhs, lhs, tt.int());
-                const ok_r = self.expectType(b.rhs, rhs, tt.int());
+                // A comparison gives a bool whatever it compares, so the
+                // hint says nothing about its operands.
+                const operand_hint = if (b.op.isComparison()) null else hint;
+                // One side's type decides a literal on the other side:
+                //   n + 1,  1 + n,  48 + n * 2    are all i32 when n is.
+                // So if only the left side is a bare literal, do the right first.
+                var lhs: *const Type = undefined;
+                var rhs: *const Type = undefined;
+                if (isLiteral(b.lhs) and !isLiteral(b.rhs)) {
+                    rhs = try self.checkExpr(b.rhs, operand_hint);
+                    lhs = try self.checkExpr(b.lhs, rhs);
+                } else {
+                    lhs = try self.checkExpr(b.lhs, operand_hint);
+                    rhs = try self.checkExpr(b.rhs, lhs);
+                }
+                if (b.op == .eq_eq or b.op == .not_eq) {
+                    // == and != need both sides to have the same type, and give bool.
+                    if (!self.expectType(b.rhs, rhs, lhs)) return tt.err();
+                    return tt.boolean();
+                }
+                // < <= > >= compare two integers of the same type and give bool.
+                // + - * / need two integers of the same type, and give that type.
+                const want = if (lhs.isInt()) lhs else tt.int();
+                const ok_l = self.expectType(b.lhs, lhs, want);
+                const ok_r = self.expectType(b.rhs, rhs, want);
                 if (!(ok_l and ok_r)) return tt.err();
-                return if (b.op.isComparison()) tt.boolean() else tt.int();
+                return if (b.op.isComparison()) tt.boolean() else want;
             },
             .call => |*c| return self.checkCall(e, c),
         }
+    }
+
+    /// The type an integer literal takes: the hint if it is an integer type.
+    fn literalType(self: *const Checker, hint: ?*const Type) *const Type {
+        if (hint) |h| if (h.isInt()) return h;
+        return self.types.int();
+    }
+
+    /// An i32 literal must fit in 32 bits. (An i64 literal too big for u64
+    /// already became 0 in the parser, like the C++ version.)
+    fn checkLiteral(self: *Checker, e: *const Expr, t: *const Type, v: u64, negated: bool) void {
+        if (t.* != .i32) return;
+        const limit: u64 = if (negated) 1 << 31 else (1 << 31) - 1;
+        if (v > limit) {
+            self.diag.err(e.offset, "integer literal '{s}{d}' does not fit in 'i32'", .{ if (negated) "-" else "", v });
+        }
+    }
+
+    /// An expression made only of integer literals, like 7, -1 or 2 * 3.
+    /// Its type comes from the context instead of from itself.
+    fn isLiteral(e: *const Expr) bool {
+        return switch (e.data) {
+            .int => true,
+            .unary => |u| u.op == .minus and isLiteral(u.operand),
+            .binary => |b| switch (b.op) {
+                .plus, .minus, .star, .slash => isLiteral(b.lhs) and isLiteral(b.rhs),
+                else => false,
+            },
+            else => false,
+        };
     }
 
     /// name(args): the function must exist, and each argument must match
@@ -311,7 +396,7 @@ pub const Checker = struct {
     fn checkCall(self: *Checker, e: *Expr, c: *Expr.Call) Error!*const Type {
         const f = self.functions.get(c.name) orelse {
             self.diag.err(e.offset, "undeclared function '{s}'", .{c.name});
-            for (c.args) |arg| _ = try self.checkExpr(arg);
+            for (c.args) |arg| _ = try self.checkExpr(arg, null);
             return self.types.err();
         };
         c.func = f;
@@ -319,8 +404,9 @@ pub const Checker = struct {
             self.diag.err(e.offset, "'{s}' takes {d} argument(s), but got {d}", .{ c.name, f.params.len, c.args.len });
         }
         for (c.args, 0..) |arg, i| {
-            const got = try self.checkExpr(arg);
-            if (i < f.params.len) _ = self.expectType(arg, got, f.params[i].type);
+            const param: ?*const Type = if (i < f.params.len) f.params[i].type else null;
+            const got = try self.checkExpr(arg, param);
+            if (param) |p| _ = self.expectType(arg, got, p);
         }
         return f.ret_type;
     }

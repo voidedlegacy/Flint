@@ -117,13 +117,19 @@ pub const Stmt = struct {
 };
 
 /// fn name(a: i64, b: &mut i64) -> i64 { ... }
+/// extern fn putchar(c: i32) -> i32      (no body: it is defined in C)
 pub const FnDecl = struct {
     offset: u32,
     name: []const u8,
     params: []*Var, // each has type_syntax set and no init
     ret_syntax: ?*TypeRef, // null: the function returns nothing
-    body: *Stmt, // a .block
+    body: ?*Stmt, // a .block; null for an extern fn
     ret_type: *const Type = undefined, // filled in by the checker
+
+    /// Declared with `extern`: called by its plain C name, never defined here.
+    pub fn isExtern(f: *const FnDecl) bool {
+        return f.body == null;
+    }
 };
 
 // ---------------------------------------------------------------- dump
@@ -241,7 +247,7 @@ pub fn dumpStmt(w: *std.Io.Writer, s: *const Stmt) std.Io.Writer.Error!void {
 }
 
 pub fn dumpFn(w: *std.Io.Writer, f: *const FnDecl) std.Io.Writer.Error!void {
-    try w.print("(fn {s} (", .{f.name});
+    try w.print("({s}fn {s} (", .{ if (f.isExtern()) "extern " else "", f.name });
     for (f.params, 0..) |p, i| {
         if (i > 0) try w.writeAll(" ");
         try w.print("{s}: ", .{p.name});
@@ -252,7 +258,9 @@ pub fn dumpFn(w: *std.Io.Writer, f: *const FnDecl) std.Io.Writer.Error!void {
         try w.writeAll(" -> ");
         try dumpTypeRef(w, r);
     }
-    try w.writeAll(" ");
-    try dumpStmt(w, f.body);
+    if (f.body) |body| {
+        try w.writeAll(" ");
+        try dumpStmt(w, body);
+    }
     try w.writeAll(")");
 }

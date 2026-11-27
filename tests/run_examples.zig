@@ -9,6 +9,8 @@
 //!      byte for byte (messages, line:col, source lines and carets).
 //!      Files for examples that predate the Zig port came from the C++ version;
 //!      since step 30 their notes point at the next read, not the last one.
+//!   5. if tests/expected/<name>.out exists, the program's stdout must match
+//!      it byte for byte (programs that print, via `extern fn putchar`).
 const std = @import("std");
 const builtin = @import("builtin");
 const Io = std.Io;
@@ -46,6 +48,9 @@ const expectations = std.StaticStringMap(Expect).initComptime(.{
     .{ "break_borrows", Expect{ .errors = 2 } },
     .{ "logic", Expect{ .runs = 42 } },
     .{ "logic_errors", Expect{ .errors = 4 } },
+    .{ "extern", Expect{ .runs = 42 } },
+    .{ "extern_errors", Expect{ .errors = 10 } },
+    .{ "extern_syntax", Expect{ .errors = 3 } }, // parse errors
 });
 
 pub fn main(init: std.process.Init) !u8 {
@@ -149,6 +154,12 @@ fn checkOne(
                 .exited => |c| if (c != n) return try std.fmt.allocPrint(arena, "program exited {d}, expected {d}", .{ c, n }),
                 else => return "program crashed",
             }
+            const out_name = try std.fmt.allocPrint(arena, "{s}.out", .{name});
+            if (expected_dir.readFileAlloc(io, out_name, arena, .unlimited)) |golden| {
+                if (!std.mem.eql(u8, golden, run.stdout)) {
+                    return try std.fmt.allocPrint(arena, "stdout differs from tests/expected/{s}\n--- expected\n{s}--- got\n{s}", .{ out_name, golden, run.stdout });
+                }
+            } else |_| {}
         },
     }
     return null;

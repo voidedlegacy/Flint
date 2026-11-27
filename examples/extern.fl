@@ -1,0 +1,41 @@
+// `extern fn` declares a function that C defines. clang links in the C
+// library, so putchar, abs and llabs are already there to call.
+extern fn putchar(c: i32) -> i32
+extern fn abs(n: i32) -> i32
+extern fn llabs(n: i64) -> i64
+
+// Writes n (zero or more) in decimal, most significant digit first.
+fn print_digits(n: i32) {
+	if n >= 10 {
+		print_digits(n / 10)
+	}
+	putchar(48 + n - n / 10 * 10)   // 48 is '0'; the literal is an i32 too
+}
+
+// Writes one digit for each of from, from + 1, ..., to.
+fn print_range(from: i32, to: i32) {
+	var d = from                    // an i32, because from is one
+	for d <= to {
+		putchar(48 + d)
+		d = d + 1
+	}
+}
+
+fn newline() {
+	putchar(10)                     // '\n'
+}
+
+fn main() -> i64 {
+	print_range(0, 9)               // 0123456789
+	newline()
+	print_digits(2147483647)        // the largest i32
+	newline()
+	print_digits(abs(-42))          // 42, computed in C
+	newline()
+	let wrote = putchar(33)         // '!': putchar returns what it wrote
+	newline()
+	if wrote == 33 {
+		return llabs(-42)           // C functions can take and give i64 too
+	}
+	return 1
+}
